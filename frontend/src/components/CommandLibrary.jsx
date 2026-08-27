@@ -20,25 +20,89 @@ const REQUEST_TIMEOUT = 15000;
 const SEARCH_DEBOUNCE = 350;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CACHE CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CACHE_VERSION = "v1";
+const CACHE_KEY_PREFIX = `cmdkit-command-library-${CACHE_VERSION}`;
+
+const getCacheKey = (user) => {
+  const userId =
+    user?._id ||
+    user?.id ||
+    user?.userId ||
+    user?.email ||
+    user?.username ||
+    "anonymous";
+
+  return `${CACHE_KEY_PREFIX}-${String(userId)}`;
+};
+
+const readCachedGroups = (user) => {
+  try {
+    const raw = localStorage.getItem(getCacheKey(user));
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return Array.isArray(parsed?.groups) ? parsed.groups : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeCachedGroups = (user, groups) => {
+  try {
+    localStorage.setItem(
+      getCacheKey(user),
+      JSON.stringify({
+        version: CACHE_VERSION,
+        updatedAt: Date.now(),
+        groups: Array.isArray(groups) ? groups : [],
+      }),
+    );
+  } catch {
+    // localStorage can be unavailable or full.
+  }
+};
+
+const clearCachedGroups = (user) => {
+  try {
+    localStorage.removeItem(getCacheKey(user));
+  } catch {
+    // Ignore cache errors.
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TAG_COLORS = {
+  bash: "bg-gray-500/15 text-gray-300 border-gray-500/30",
   git: "bg-orange-500/15 text-orange-400 border-orange-500/30",
   npm: "bg-red-500/15 text-red-400 border-red-500/30",
+  docker: "bg-sky-500/15 text-sky-400 border-sky-500/30",
   javascript: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
   typescript: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   react: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
   css: "bg-pink-500/15 text-pink-400 border-pink-500/30",
   json: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
   code: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+  other: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 const CODE_LANGUAGES = [
+  { value: "bash", label: "Bash / Shell" },
   { value: "javascript", label: "JavaScript" },
   { value: "typescript", label: "TypeScript" },
   { value: "jsx", label: "React JSX" },
   { value: "tsx", label: "React TSX" },
+  { value: "css", label: "CSS" },
+  { value: "json", label: "JSON" },
 ];
 
 const ENTRY_TYPES = [
@@ -230,6 +294,25 @@ const LockIcon = ({ size = 14 }) => (
   </svg>
 );
 
+const RefreshIcon = ({ size = 14 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+  </svg>
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,7 +340,9 @@ const getErrorMessage = (error) => {
 const getStoredToken = () => {
   try {
     return (
-      localStorage.getItem("token") || sessionStorage.getItem("token") || null
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      null
     );
   } catch {
     return null;
@@ -277,11 +362,96 @@ const createClientId = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function request(url, options = {}) {
-  const controller = new AbortController();
+  const timeoutController = new AbortController();
 
   const timeoutId = window.setTimeout(() => {
-    controller.abort();
+    timeoutController.abort();
   }, REQUEST_TIMEOUT);
+
+  let combinedSignal = timeoutController.signal;
+
+  if (options.signal) {
+    if (options.signal.aborted) {
+      timeoutController.abort();
+    } else {
+      const externalSignal = options.signal;
+
+      const abortExternal = () => {
+        timeoutController.abort();
+      };
+
+      externalSignal.addEventListener("abort", abortExternal, {
+        once: true,
+      });
+
+      try {
+        const token = getStoredToken();
+
+        const headers = {
+          Accept: "application/json",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {}),
+        };
+
+        if (token && !headers.Authorization) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          credentials: "include",
+          signal: combinedSignal,
+        });
+
+        let data = null;
+
+        const contentType = response.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+          try {
+            data = await response.json();
+          } catch {
+            data = null;
+          }
+        } else {
+          try {
+            const text = await response.text();
+            data = text ? { message: text } : null;
+          } catch {
+            data = null;
+          }
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          const error = new Error(
+            data?.message || "Authentication required",
+          );
+
+          error.status = response.status;
+          error.data = data;
+
+          throw error;
+        }
+
+        if (!response.ok) {
+          const error = new Error(
+            data?.message ||
+              `Request failed with status ${response.status}`,
+          );
+
+          error.status = response.status;
+          error.data = data;
+
+          throw error;
+        }
+
+        return data || {};
+      } finally {
+        externalSignal.removeEventListener("abort", abortExternal);
+      }
+    }
+  }
 
   try {
     const token = getStoredToken();
@@ -292,16 +462,15 @@ async function request(url, options = {}) {
       ...(options.headers || {}),
     };
 
-    // JWT authentication.
     if (token && !headers.Authorization) {
       headers.Authorization = `Bearer ${token}`;
     }
 
     const response = await fetch(url, {
-      credentials: "include",
       ...options,
+      credentials: "include",
       headers,
-      signal: options.signal || controller.signal,
+      signal: combinedSignal,
     });
 
     let data = null;
@@ -324,7 +493,9 @@ async function request(url, options = {}) {
     }
 
     if (response.status === 401 || response.status === 403) {
-      const error = new Error(data?.message || "Authentication required");
+      const error = new Error(
+        data?.message || "Authentication required",
+      );
 
       error.status = response.status;
       error.data = data;
@@ -334,7 +505,8 @@ async function request(url, options = {}) {
 
     if (!response.ok) {
       const error = new Error(
-        data?.message || `Request failed with status ${response.status}`,
+        data?.message ||
+          `Request failed with status ${response.status}`,
       );
 
       error.status = response.status;
@@ -403,6 +575,7 @@ function CopyButton({ text, large = false }) {
         textarea.style.opacity = "0";
 
         document.body.appendChild(textarea);
+
         textarea.focus();
         textarea.select();
 
@@ -457,9 +630,12 @@ function CopyButton({ text, large = false }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CommandCard({ item, onDelete, onEdit }) {
-  const tagClass = TAG_COLORS[item.tag] || TAG_COLORS.other;
+  const tagClass =
+    TAG_COLORS[item?.tag] || TAG_COLORS.other;
 
-  const commands = Array.isArray(item.commands) ? item.commands : [];
+  const commands = Array.isArray(item?.commands)
+    ? item.commands
+    : [];
 
   return (
     <article className="group bg-[#0d1117] border border-[#21262d] rounded-xl overflow-hidden hover:border-[#30363d] transition-all">
@@ -472,10 +648,10 @@ function CommandCard({ item, onDelete, onEdit }) {
               ${tagClass}
             `}
           >
-            {item.tag || "other"}
+            {item?.tag || "other"}
           </span>
 
-          {item.entryType && (
+          {item?.entryType && (
             <span className="text-[10px] text-[#8b949e] bg-[#161b22] border border-[#21262d] px-2 py-0.5 rounded-md">
               {item.entryType === "component"
                 ? "Full Component"
@@ -486,7 +662,7 @@ function CommandCard({ item, onDelete, onEdit }) {
           )}
 
           <h3 className="text-sm font-semibold text-[#e6edf3] truncate">
-            {item.title || "Untitled"}
+            {item?.title || "Untitled"}
           </h3>
 
           <span className="shrink-0 text-[10px] text-[#484f58] bg-[#161b22] border border-[#21262d] px-1.5 py-0.5 rounded-full">
@@ -501,17 +677,17 @@ function CommandCard({ item, onDelete, onEdit }) {
             onClick={() => onEdit(item)}
             className="p-1.5 rounded-md text-[#484f58] hover:text-[#58a6ff] hover:bg-[#161b22] transition-colors"
             title="Edit"
-            aria-label={`Edit ${item.title || "command group"}`}
+            aria-label={`Edit ${item?.title || "command group"}`}
           >
             <EditIcon />
           </button>
 
           <button
             type="button"
-            onClick={() => onDelete(item._id)}
+            onClick={() => onDelete(item?._id)}
             className="p-1.5 rounded-md text-[#484f58] hover:text-red-400 hover:bg-[#161b22] transition-colors"
             title="Delete"
-            aria-label={`Delete ${item.title || "command group"}`}
+            aria-label={`Delete ${item?.title || "command group"}`}
           >
             <TrashIcon />
           </button>
@@ -529,15 +705,15 @@ function CommandCard({ item, onDelete, onEdit }) {
 
             const isMultiLine =
               value.includes("\n") ||
-              item.entryType === "multi" ||
-              item.entryType === "component";
+              item?.entryType === "multi" ||
+              item?.entryType === "component";
 
             return (
               <div
                 key={
                   command?._id ||
                   command?.id ||
-                  `${item._id || "group"}-${index}`
+                  `${item?._id || "group"}-${index}`
                 }
                 className="bg-[#161b22] border border-[#21262d] rounded-lg overflow-hidden"
               >
@@ -547,7 +723,7 @@ function CommandCard({ item, onDelete, onEdit }) {
                       {index + 1}
                     </span>
 
-                    {command.label ? (
+                    {command?.label ? (
                       <span className="text-[11px] text-[#8b949e] truncate">
                         {command.label}
                       </span>
@@ -591,33 +767,44 @@ function CommandCard({ item, onDelete, onEdit }) {
 // CODE INPUT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
-  const isCode = entryType === "multi" || entryType === "component";
+function CodeInput({
+  item,
+  index,
+  onChange,
+  onRemove,
+  canRemove,
+  entryType,
+}) {
+  const isCode =
+    entryType === "multi" ||
+    entryType === "component";
 
   const handleKeyDown = (event) => {
-    if (event.key === "Tab") {
-      event.preventDefault();
-
-      const textarea = event.currentTarget;
-
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-
-      const newValue =
-        textarea.value.substring(0, start) +
-        "  " +
-        textarea.value.substring(end);
-
-      onChange({
-        ...item,
-        cmd: newValue,
-      });
-
-      requestAnimationFrame(() => {
-        textarea.selectionStart = start + 2;
-        textarea.selectionEnd = start + 2;
-      });
+    if (event.key !== "Tab") {
+      return;
     }
+
+    event.preventDefault();
+
+    const textarea = event.currentTarget;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    const newValue =
+      textarea.value.substring(0, start) +
+      "  " +
+      textarea.value.substring(end);
+
+    onChange({
+      ...item,
+      cmd: newValue,
+    });
+
+    requestAnimationFrame(() => {
+      textarea.selectionStart = start + 2;
+      textarea.selectionEnd = start + 2;
+    });
   };
 
   return (
@@ -629,7 +816,7 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
 
         <input
           type="text"
-          value={item.label || ""}
+          value={item?.label || ""}
           onChange={(e) =>
             onChange({
               ...item,
@@ -660,7 +847,7 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
 
       <div className="relative">
         <textarea
-          value={item.cmd || ""}
+          value={item?.cmd || ""}
           onChange={(e) =>
             onChange({
               ...item,
@@ -693,7 +880,11 @@ export default function MyComponent() {
             px-4 py-3
             focus:outline-none
             placeholder-[#3d444d]
-            ${entryType === "single" ? "min-h-[70px]" : "min-h-[180px]"}
+            ${
+              entryType === "single"
+                ? "min-h-[70px]"
+                : "min-h-[180px]"
+            }
           `}
         />
 
@@ -713,26 +904,45 @@ export default function MyComponent() {
 // COMMAND MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CommandModal({ editItem, onClose, onSave, loading }) {
+function CommandModal({
+  editItem,
+  onClose,
+  onSave,
+  loading,
+}) {
   const isEdit = Boolean(editItem);
 
-  const [title, setTitle] = useState(editItem?.title || "");
+  const [title, setTitle] = useState(
+    editItem?.title || "",
+  );
 
   const [entryType, setEntryType] = useState(
     editItem?.entryType ||
-      (editItem?.commands?.some((c) => c?.cmd?.includes("\n"))
+      (editItem?.commands?.some((c) =>
+        c?.cmd?.includes("\n"),
+      )
         ? "multi"
         : "single"),
   );
 
-  const [tag, setTag] = useState(editItem?.tag || "bash");
+  const [tag, setTag] = useState(
+    editItem?.tag || "bash",
+  );
 
-  const [language, setLanguage] = useState(editItem?.language || "bash");
+  const [language, setLanguage] = useState(
+    editItem?.language || "bash",
+  );
 
   const [cmds, setCmds] = useState(() => {
-    if (Array.isArray(editItem?.commands) && editItem.commands.length) {
+    if (
+      Array.isArray(editItem?.commands) &&
+      editItem.commands.length
+    ) {
       return editItem.commands.map((command) => ({
-        id: command?._id || command?.id || createClientId(),
+        id:
+          command?._id ||
+          command?.id ||
+          createClientId(),
         _id: command?._id,
         label: command?.label || "",
         cmd: command?.cmd || "",
@@ -750,30 +960,36 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
   // Automatically suggest category for component code.
   useEffect(() => {
-    if (
-      entryType !== "component" ||
-      !["bash", "git", "docker", "npm"].includes(tag)
-    ) {
+    if (entryType !== "component") {
       return;
     }
 
-    if (language === "jsx" || language === "tsx") {
+    if (
+      language === "jsx" ||
+      language === "tsx"
+    ) {
       setTag("react");
       return;
     }
 
-    if (language === "javascript" || language === "typescript") {
+    if (
+      language === "javascript" ||
+      language === "typescript"
+    ) {
       setTag(language);
       return;
     }
 
-    if (TAG_COLORS[language]) {
+    if (
+      language === "css" ||
+      language === "json"
+    ) {
       setTag(language);
       return;
     }
 
     setTag("code");
-  }, [entryType, language, tag]);
+  }, [entryType, language]);
 
   const addCmd = () => {
     setCmds((previous) => [
@@ -788,18 +1004,22 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
   const updateCmd = (index, value) => {
     setCmds((previous) =>
-      previous.map((command, i) => (i === index ? value : command)),
+      previous.map((command, i) =>
+        i === index ? value : command,
+      ),
     );
   };
 
   const removeCmd = (index) => {
-    setCmds((previous) => previous.filter((_, i) => i !== index));
+    setCmds((previous) =>
+      previous.filter((_, i) => i !== index),
+    );
   };
 
   const canSave =
     title.trim().length > 0 &&
     title.trim().length <= 200 &&
-    cmds.some((command) => command.cmd?.trim());
+    cmds.some((command) => command?.cmd?.trim());
 
   const handleSave = () => {
     if (!canSave || loading) {
@@ -808,9 +1028,11 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
     const cleanedCommands = cmds
       .map((command) => ({
-        ...(command._id ? { _id: command._id } : {}),
-        label: command.label?.trim() || "",
-        cmd: command.cmd || "",
+        ...(command?._id
+          ? { _id: command._id }
+          : {}),
+        label: command?.label?.trim() || "",
+        cmd: command?.cmd || "",
       }))
       .filter((command) => command.cmd.trim());
 
@@ -825,12 +1047,18 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === "Escape" && !loading) {
+    if (
+      event.key === "Escape" &&
+      !loading
+    ) {
       onClose();
       return;
     }
 
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.key === "Enter"
+    ) {
       event.preventDefault();
       handleSave();
     }
@@ -843,7 +1071,10 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
       aria-modal="true"
       aria-labelledby="command-modal-title"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !loading) {
+        if (
+          event.target === event.currentTarget &&
+          !loading
+        ) {
           onClose();
         }
       }}
@@ -872,8 +1103,8 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
             </h2>
 
             <p className="text-[11px] text-[#484f58] mt-1">
-              Single line, multiple lines, ya complete component code save
-              karein.
+              Single line, multiple lines, ya
+              complete component code save karein.
             </p>
           </div>
 
@@ -897,7 +1128,9 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) =>
+                setTitle(e.target.value)
+              }
               placeholder="e.g. React User Dashboard"
               maxLength={200}
               autoFocus
@@ -921,13 +1154,16 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {ENTRY_TYPES.map((type) => {
-                const active = entryType === type.value;
+                const active =
+                  entryType === type.value;
 
                 return (
                   <button
                     type="button"
                     key={type.value}
-                    onClick={() => setEntryType(type.value)}
+                    onClick={() =>
+                      setEntryType(type.value)
+                    }
                     aria-pressed={active}
                     className={`
                       text-left p-3 rounded-lg border transition-all
@@ -940,7 +1176,6 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
                   >
                     <div className="flex items-center gap-2">
                       <CodeIcon />
-
                       <span className="text-xs font-semibold">
                         {type.label}
                       </span>
@@ -963,7 +1198,9 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
               <select
                 value={language}
-                onChange={(e) => setLanguage(e.target.value)}
+                onChange={(e) =>
+                  setLanguage(e.target.value)
+                }
                 className="
                   w-full bg-[#161b22]
                   border border-[#30363d]
@@ -993,7 +1230,9 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
 
               <select
                 value={tag}
-                onChange={(e) => setTag(e.target.value)}
+                onChange={(e) =>
+                  setTag(e.target.value)
+                }
                 className="
                   w-full bg-[#161b22]
                   border border-[#30363d]
@@ -1004,11 +1243,17 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
                   focus:border-[#58a6ff]
                 "
               >
-                {Object.keys(TAG_COLORS).map((item) => (
-                  <option key={item} value={item} className="bg-[#0d1117]">
-                    {item}
-                  </option>
-                ))}
+                {Object.keys(TAG_COLORS).map(
+                  (item) => (
+                    <option
+                      key={item}
+                      value={item}
+                      className="bg-[#0d1117]"
+                    >
+                      {item}
+                    </option>
+                  ),
+                )}
               </select>
             </div>
           </div>
@@ -1036,12 +1281,20 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
             <div className="space-y-2">
               {cmds.map((command, index) => (
                 <CodeInput
-                  key={command._id || command.id || index}
+                  key={
+                    command?._id ||
+                    command?.id ||
+                    index
+                  }
                   item={command}
                   index={index}
                   entryType={entryType}
-                  onChange={(value) => updateCmd(index, value)}
-                  onRemove={() => removeCmd(index)}
+                  onChange={(value) =>
+                    updateCmd(index, value)
+                  }
+                  onRemove={() =>
+                    removeCmd(index)
+                  }
                   canRemove={cmds.length > 1}
                 />
               ))}
@@ -1114,7 +1367,11 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
                 <PlusIcon size={14} />
               )}
 
-              {loading ? "Saving..." : isEdit ? "Save Changes" : "Add Group"}
+              {loading
+                ? "Saving..."
+                : isEdit
+                  ? "Save Changes"
+                  : "Add Group"}
             </button>
           </div>
         </div>
@@ -1154,27 +1411,57 @@ function LoginButton({ onLogin }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function CommandLibrary({ user, token }) {
+export default function CommandLibrary({
+  user,
+  token,
+}) {
   const navigate = useNavigate();
 
-  const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // IMPORTANT:
+  // Cache is read synchronously so refresh does not show an empty/loading page.
+  const cachedGroups = useMemo(
+    () => readCachedGroups(user),
+    [user],
+  );
+
+  const [groups, setGroups] = useState(
+    () => cachedGroups,
+  );
+
+  const [loading, setLoading] = useState(
+    () => cachedGroups.length === 0,
+  );
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
 
-  const [apiError, setApiError] = useState(null);
+  const [deletingId, setDeletingId] =
+    useState(null);
 
-  const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem] = useState(null);
+  const [apiError, setApiError] =
+    useState(null);
+
+  const [showModal, setShowModal] =
+    useState(false);
+
+  const [editItem, setEditItem] =
+    useState(null);
 
   const [search, setSearch] = useState("");
-  const [filterTag, setFilterTag] = useState("all");
+
+  const [filterTag, setFilterTag] =
+    useState("all");
 
   const mountedRef = useRef(true);
+
   const fetchAbortRef = useRef(null);
 
+  const requestIdRef = useRef(0);
+
   // ─────────────────────────────────────────────────────────────────────────
-  // MOUNT
+  // MOUNT / UNMOUNT
   // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1188,6 +1475,21 @@ export default function CommandLibrary({ user, token }) {
       }
     };
   }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UPDATE CACHE WHEN USER CHANGES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const cached = readCachedGroups(user);
+
+    if (!mountedRef.current) {
+      return;
+    }
+
+    setGroups(cached);
+    setLoading(cached.length === 0);
+  }, [user]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTH
@@ -1206,7 +1508,9 @@ export default function CommandLibrary({ user, token }) {
 
   const requireLogin = useCallback(() => {
     if (!isLoggedIn) {
-      toast.info("Please login first to add or edit commands.");
+      toast.info(
+        "Please login first to add or edit commands.",
+      );
 
       redirectToLogin();
 
@@ -1221,10 +1525,16 @@ export default function CommandLibrary({ user, token }) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const fetchGroups = useCallback(
-    async ({ signal } = {}) => {
+    async ({ silent = false } = {}) => {
       if (!API_BASE_URL) {
-        setApiError("API URL is not configured. Please set VITE_API_BASE.");
-        setLoading(false);
+        if (mountedRef.current) {
+          setApiError(
+            "API URL is not configured. Please set VITE_API_BASE.",
+          );
+          setLoading(false);
+          setRefreshing(false);
+        }
+
         return;
       }
 
@@ -1232,74 +1542,152 @@ export default function CommandLibrary({ user, token }) {
         fetchAbortRef.current.abort();
       }
 
-      const controller = new AbortController();
+      const controller =
+        new AbortController();
 
       fetchAbortRef.current = controller;
 
-      const activeSignal = signal || controller.signal;
+      const requestId =
+        ++requestIdRef.current;
 
-      setLoading(true);
-      setApiError(null);
+      const hasExistingData =
+        groups.length > 0;
+
+      if (mountedRef.current) {
+        setApiError(null);
+
+        if (silent || hasExistingData) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+      }
 
       try {
-        const params = new URLSearchParams();
+        const params =
+          new URLSearchParams();
 
         if (filterTag !== "all") {
           params.set("tag", filterTag);
         }
 
-        const trimmedSearch = search.trim();
+        const trimmedSearch =
+          search.trim();
 
         if (trimmedSearch) {
-          params.set("search", trimmedSearch);
+          params.set(
+            "search",
+            trimmedSearch,
+          );
         }
 
-        const query = params.toString();
+        const query =
+          params.toString();
 
-        const url = query ? `${API_BASE}?${query}` : API_BASE;
+        const url = query
+          ? `${API_BASE}?${query}`
+          : API_BASE;
 
-        const response = await api.get(url, {
-          signal: activeSignal,
-        });
+        const response =
+          await api.get(url, {
+            signal: controller.signal,
+          });
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current ||
+          requestId !== requestIdRef.current
+        ) {
           return;
         }
 
         if (response?.success) {
-          setGroups(Array.isArray(response.data) ? response.data : []);
+          const nextGroups =
+            Array.isArray(response.data)
+              ? response.data
+              : [];
+
+          setGroups(nextGroups);
+
+          // Only cache unfiltered library data.
+          // Search/filter results should not overwrite the main cache.
+          if (
+            !trimmedSearch &&
+            filterTag === "all"
+          ) {
+            writeCachedGroups(
+              user,
+              nextGroups,
+            );
+          }
         } else {
-          setGroups([]);
-          setApiError(response?.message || "Unable to load commands.");
+          if (!hasExistingData) {
+            setGroups([]);
+          }
+
+          setApiError(
+            response?.message ||
+              "Unable to load commands.",
+          );
         }
       } catch (error) {
-        if (error?.name === "AbortError" || !mountedRef.current) {
+        if (
+          error?.name === "AbortError" ||
+          !mountedRef.current ||
+          requestId !== requestIdRef.current
+        ) {
           return;
         }
 
-        if (error?.status === 401 || error?.status === 403) {
-          setApiError("Your login session has expired. Please login again.");
+        if (
+          error?.status === 401 ||
+          error?.status === 403
+        ) {
+          setApiError(
+            "Your login session has expired. Please login again.",
+          );
         } else {
-          setApiError(getErrorMessage(error) || "Cannot connect to backend.");
+          // Do not destroy cached data on network failure.
+          setApiError(
+            getErrorMessage(error) ||
+              "Cannot connect to backend.",
+          );
         }
       } finally {
-        if (mountedRef.current) {
+        if (
+          mountedRef.current &&
+          requestId === requestIdRef.current
+        ) {
           setLoading(false);
+          setRefreshing(false);
         }
       }
     },
-    [filterTag, search],
+    [
+      filterTag,
+      search,
+      user,
+      groups.length,
+    ],
   );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // INITIAL + SEARCH/FILTER FETCH
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      fetchGroups();
+      fetchGroups({
+        silent: groups.length > 0,
+      });
     }, SEARCH_DEBOUNCE);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [fetchGroups]);
+  }, [
+    fetchGroups,
+    groups.length,
+  ]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTH CHANGED
@@ -1329,12 +1717,19 @@ export default function CommandLibrary({ user, token }) {
     }
 
     if (!title?.trim()) {
-      toast.error("Group title is required.");
+      toast.error(
+        "Group title is required.",
+      );
       return;
     }
 
-    if (!Array.isArray(commands) || commands.length === 0) {
-      toast.error("Add at least one code block.");
+    if (
+      !Array.isArray(commands) ||
+      commands.length === 0
+    ) {
+      toast.error(
+        "Add at least one code block.",
+      );
       return;
     }
 
@@ -1354,15 +1749,28 @@ export default function CommandLibrary({ user, token }) {
       };
 
       const response = id
-        ? await api.put(`${API_BASE}/${encodeURIComponent(id)}`, payload)
-        : await api.post(API_BASE, payload);
+        ? await api.put(
+            `${API_BASE}/${encodeURIComponent(
+              id,
+            )}`,
+            payload,
+          )
+        : await api.post(
+            API_BASE,
+            payload,
+          );
 
       if (!response?.success) {
-        throw new Error(response?.message || "Unable to save group.");
+        throw new Error(
+          response?.message ||
+            "Unable to save group.",
+        );
       }
 
       toast.success(
-        id ? "Group updated successfully." : "Group created successfully.",
+        id
+          ? "Group updated successfully."
+          : "Group created successfully.",
       );
 
       if (mountedRef.current) {
@@ -1370,10 +1778,18 @@ export default function CommandLibrary({ user, token }) {
         setEditItem(null);
       }
 
-      await fetchGroups();
+      // Refresh from server after save.
+      await fetchGroups({
+        silent: true,
+      });
     } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        toast.error("Your login session has expired.");
+      if (
+        error?.status === 401 ||
+        error?.status === 403
+      ) {
+        toast.error(
+          "Your login session has expired.",
+        );
 
         if (mountedRef.current) {
           setShowModal(false);
@@ -1382,7 +1798,10 @@ export default function CommandLibrary({ user, token }) {
 
         redirectToLogin();
       } else if (mountedRef.current) {
-        toast.error(getErrorMessage(error) || "Failed to save group.");
+        toast.error(
+          getErrorMessage(error) ||
+            "Failed to save group.",
+        );
       }
     } finally {
       if (mountedRef.current) {
@@ -1415,26 +1834,54 @@ export default function CommandLibrary({ user, token }) {
     setDeletingId(id);
 
     try {
-      const response = await api.delete(
-        `${API_BASE}/${encodeURIComponent(id)}`,
-      );
+      const response =
+        await api.delete(
+          `${API_BASE}/${encodeURIComponent(
+            id,
+          )}`,
+        );
 
       if (!response?.success) {
-        throw new Error(response?.message || "Unable to delete group.");
+        throw new Error(
+          response?.message ||
+            "Unable to delete group.",
+        );
       }
 
       toast.success("Group deleted.");
 
       if (mountedRef.current) {
-        setGroups((previous) => previous.filter((group) => group._id !== id));
+        setGroups((previous) => {
+          const nextGroups =
+            previous.filter(
+              (group) =>
+                group?._id !== id,
+            );
+
+          // Update cache immediately.
+          writeCachedGroups(
+            user,
+            nextGroups,
+          );
+
+          return nextGroups;
+        });
       }
     } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        toast.error("Your login session has expired.");
+      if (
+        error?.status === 401 ||
+        error?.status === 403
+      ) {
+        toast.error(
+          "Your login session has expired.",
+        );
 
         redirectToLogin();
       } else if (mountedRef.current) {
-        toast.error(getErrorMessage(error) || "Failed to delete.");
+        toast.error(
+          getErrorMessage(error) ||
+            "Failed to delete.",
+        );
       }
     } finally {
       if (mountedRef.current) {
@@ -1462,7 +1909,9 @@ export default function CommandLibrary({ user, token }) {
     }
 
     if (!item?._id) {
-      toast.error("Invalid command group.");
+      toast.error(
+        "Invalid command group.",
+      );
       return;
     }
 
@@ -1487,13 +1936,24 @@ export default function CommandLibrary({ user, token }) {
     () =>
       groups.reduce(
         (sum, group) =>
-          sum + (Array.isArray(group.commands) ? group.commands.length : 0),
+          sum +
+          (Array.isArray(
+            group?.commands,
+          )
+            ? group.commands.length
+            : 0),
         0,
       ),
     [groups],
   );
 
-  const allTags = useMemo(() => ["all", ...Object.keys(TAG_COLORS)], []);
+  const allTags = useMemo(
+    () => [
+      "all",
+      ...Object.keys(TAG_COLORS),
+    ],
+    [],
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -1510,30 +1970,47 @@ export default function CommandLibrary({ user, token }) {
               <CodeIcon size={13} />
             </div>
 
-            <span className="font-semibold text-sm tracking-tight">CmdKit</span>
+            <span className="font-semibold text-sm tracking-tight">
+              CmdKit
+            </span>
           </div>
 
-          {isLoggedIn ? (
-            <button
-              type="button"
-              onClick={openAdd}
-              className="
-                flex items-center gap-1.5
-                px-3.5 py-1.5
-                bg-[#238636]
-                hover:bg-[#2ea043]
-                text-white
-                text-sm font-medium
-                rounded-lg
-                transition-colors
-              "
-            >
-              <PlusIcon size={15} />
-              New Group
-            </button>
-          ) : (
-            <LoginButton onLogin={redirectToLogin} />
-          )}
+          <div className="flex items-center gap-2">
+            {refreshing && (
+              <div
+                className="hidden sm:flex items-center gap-1.5 text-[10px] text-[#484f58]"
+                role="status"
+                aria-live="polite"
+              >
+                <SpinnerIcon size={12} />
+                Syncing
+              </div>
+            )}
+
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={openAdd}
+                className="
+                  flex items-center gap-1.5
+                  px-3.5 py-1.5
+                  bg-[#238636]
+                  hover:bg-[#2ea043]
+                  text-white
+                  text-sm font-medium
+                  rounded-lg
+                  transition-colors
+                "
+              >
+                <PlusIcon size={15} />
+                New Group
+              </button>
+            ) : (
+              <LoginButton
+                onLogin={redirectToLogin}
+              />
+            )}
+          </div>
         </div>
       </header>
 
@@ -1548,12 +2025,16 @@ export default function CommandLibrary({ user, token }) {
               </h1>
 
               <p className="text-sm text-[#484f58] mt-1">
-                {loading
-                  ? "Loading from MongoDB..."
+                {loading && groups.length === 0
+                  ? "Loading..."
                   : `${groups.length} group${
-                      groups.length !== 1 ? "s" : ""
+                      groups.length !== 1
+                        ? "s"
+                        : ""
                     } · ${totalCmds} ${
-                      totalCmds !== 1 ? "code blocks" : "code block"
+                      totalCmds !== 1
+                        ? "code blocks"
+                        : "code block"
                     }`}
               </p>
             </div>
@@ -1561,7 +2042,8 @@ export default function CommandLibrary({ user, token }) {
             {!isLoggedIn && (
               <div className="flex items-center gap-2 text-[11px] text-[#8b949e]">
                 <LockIcon size={13} />
-                Login required to add, edit or delete.
+                Login required to add, edit or
+                delete.
               </div>
             )}
           </div>
@@ -1581,21 +2063,48 @@ export default function CommandLibrary({ user, token }) {
               strokeWidth="2"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+              />
+              <line
+                x1="12"
+                y1="8"
+                x2="12"
+                y2="12"
+              />
+              <line
+                x1="12"
+                y1="16"
+                x2="12.01"
+                y2="16"
+              />
             </svg>
 
-            <div>
-              <p className="font-medium">Backend Connection Error</p>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">
+                Backend Connection Error
+              </p>
 
-              <p className="text-red-400/70 text-xs mt-0.5">{apiError}</p>
+              <p className="text-red-400/70 text-xs mt-0.5">
+                {apiError}
+              </p>
 
               <button
                 type="button"
-                onClick={() => fetchGroups()}
-                className="mt-1.5 text-xs underline hover:text-red-300"
+                onClick={() =>
+                  fetchGroups({
+                    silent:
+                      groups.length > 0,
+                  })
+                }
+                disabled={refreshing}
+                className="mt-1.5 inline-flex items-center gap-1.5 text-xs underline hover:text-red-300 disabled:opacity-50"
               >
+                {refreshing && (
+                  <SpinnerIcon size={11} />
+                )}
                 Retry
               </button>
             </div>
@@ -1613,7 +2122,9 @@ export default function CommandLibrary({ user, token }) {
             <input
               type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) =>
+                setSearch(e.target.value)
+              }
               placeholder="Search title, label or code..."
               aria-label="Search commands"
               className="
@@ -1636,8 +2147,12 @@ export default function CommandLibrary({ user, token }) {
               <button
                 type="button"
                 key={tag}
-                onClick={() => setFilterTag(tag)}
-                aria-pressed={filterTag === tag}
+                onClick={() =>
+                  setFilterTag(tag)
+                }
+                aria-pressed={
+                  filterTag === tag
+                }
                 className={`
                   px-3 py-1.5
                   rounded-lg
@@ -1660,7 +2175,7 @@ export default function CommandLibrary({ user, token }) {
 
         {/* CONTENT */}
 
-        {loading ? (
+        {loading && groups.length === 0 ? (
           <div
             className="flex flex-col items-center justify-center py-20 gap-3"
             role="status"
@@ -1668,13 +2183,19 @@ export default function CommandLibrary({ user, token }) {
           >
             <SpinnerIcon size={22} />
 
-            <p className="text-[#484f58] text-sm">Loading from MongoDB...</p>
+            <p className="text-[#484f58] text-sm">
+              Loading commands...
+            </p>
           </div>
         ) : groups.length > 0 ? (
           <div className="space-y-3">
             {groups.map((item) => (
               <CommandCard
-                key={item._id}
+                key={
+                  item?._id ||
+                  item?.id ||
+                  createClientId()
+                }
                 item={item}
                 onDelete={handleDelete}
                 onEdit={openEdit}
@@ -1688,12 +2209,14 @@ export default function CommandLibrary({ user, token }) {
             </div>
 
             <p className="text-[#484f58] text-sm">
-              {search || filterTag !== "all"
+              {search ||
+              filterTag !== "all"
                 ? "No groups match your filter."
                 : "No commands yet. Add your first group!"}
             </p>
 
-            {search || filterTag !== "all" ? (
+            {search ||
+            filterTag !== "all" ? (
               <button
                 type="button"
                 onClick={() => {
