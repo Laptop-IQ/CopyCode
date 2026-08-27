@@ -2,16 +2,17 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import axios from "axios";
 
-// Components
-import Login from "./components/Login";
-import Signup from "./components/Signup";
-import VerifyOtp from "./components/VerifyOtp";
-import ForgotPassword from "./components/ForgotPassword";
-import CommandLibrary from "./components/CommandLibrary";
+import Login from "./Context/Login";
+import Signup from "./Context/Signup";
+import VerifyOtp from "./Context/VerifyOtp";
+import ForgotPassword from "./Context/ForgotPassword";
 
-// ============================================================
-// API CONFIG
-// ============================================================
+import CommandLibrary from "./components/CommandLibrary";
+import Layout from "./components/Layout";
+
+/* ============================================================
+   API CONFIG
+============================================================ */
 
 const API_BASE = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -22,47 +23,47 @@ const API_BASE = (
 
 const API_USER_URL = `${API_BASE}/api/user`;
 
-// ============================================================
-// STORAGE
-// ============================================================
+/* ============================================================
+   STORAGE KEYS
+============================================================ */
 
 const STORAGE_KEYS = {
   USER: "user",
   TOKEN: "token",
 };
 
-// ============================================================
-// STORAGE HELPERS
-// ============================================================
+/* ============================================================
+   STORAGE HELPERS
+============================================================ */
 
-const safeGetItem = (storage, key) => {
+function safeGetItem(storage, key) {
   try {
     return storage.getItem(key);
   } catch (error) {
-    console.error(`[Storage] Read failed: ${key}`, error);
+    console.error(`[Storage] Failed to read "${key}"`, error);
     return null;
   }
-};
+}
 
-const safeSetItem = (storage, key, value) => {
+function safeSetItem(storage, key, value) {
   try {
     storage.setItem(key, value);
     return true;
   } catch (error) {
-    console.error(`[Storage] Write failed: ${key}`, error);
+    console.error(`[Storage] Failed to write "${key}"`, error);
     return false;
   }
-};
+}
 
-const safeRemoveItem = (storage, key) => {
+function safeRemoveItem(storage, key) {
   try {
     storage.removeItem(key);
   } catch (error) {
-    console.error(`[Storage] Remove failed: ${key}`, error);
+    console.error(`[Storage] Failed to remove "${key}"`, error);
   }
-};
+}
 
-const parseJSON = (value, fallback = null) => {
+function parseJSON(value, fallback = null) {
   if (!value) return fallback;
 
   try {
@@ -70,14 +71,15 @@ const parseJSON = (value, fallback = null) => {
   } catch {
     return fallback;
   }
-};
+}
 
-// ============================================================
-// AUTH STORAGE
-// ============================================================
+/* ============================================================
+   GET STORED AUTH
+============================================================ */
 
-const getStoredAuth = () => {
+function getStoredAuth() {
   const localToken = safeGetItem(localStorage, STORAGE_KEYS.TOKEN);
+
   const sessionToken = safeGetItem(sessionStorage, STORAGE_KEYS.TOKEN);
 
   const localUser = parseJSON(
@@ -111,37 +113,25 @@ const getStoredAuth = () => {
     user: null,
     persistent: false,
   };
-};
+}
 
-// ============================================================
-// PROTECTED ROUTE
-// ============================================================
+/* ============================================================
+   CLEAR AUTH
+============================================================ */
 
-const ProtectedRoute = ({ user, token, children }) => {
-  if (!user || !token) {
-    return <Navigate to="/login" replace />;
-  }
+function clearStoredAuth() {
+  safeRemoveItem(localStorage, STORAGE_KEYS.USER);
+  safeRemoveItem(localStorage, STORAGE_KEYS.TOKEN);
 
-  return children;
-};
+  safeRemoveItem(sessionStorage, STORAGE_KEYS.USER);
+  safeRemoveItem(sessionStorage, STORAGE_KEYS.TOKEN);
+}
 
-// ============================================================
-// PUBLIC ROUTE
-// ============================================================
+/* ============================================================
+   SCROLL TO TOP
+============================================================ */
 
-const PublicOnlyRoute = ({ user, token, children }) => {
-  if (user && token) {
-    return <Navigate to="/" replace />;
-  }
-
-  return children;
-};
-
-// ============================================================
-// SCROLL
-// ============================================================
-
-const ScrollToTop = () => {
+function ScrollToTop() {
   const location = useLocation();
 
   useEffect(() => {
@@ -153,53 +143,128 @@ const ScrollToTop = () => {
   }, [location.pathname]);
 
   return null;
-};
+}
 
-// ============================================================
-// LOADING
-// ============================================================
+/* ============================================================
+   LOADING SCREEN
+============================================================ */
 
-const LoadingScreen = () => (
-  <div
-    className="min-h-screen flex items-center justify-center bg-gray-50"
-    role="status"
-    aria-live="polite"
-  >
-    <div className="flex flex-col items-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
-      <p className="mt-4 text-gray-600">Loading...</p>
+function LoadingScreen() {
+  return (
+    <div
+      className="
+        min-h-screen
+        bg-[#0A0810]
+        flex
+        items-center
+        justify-center
+      "
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col items-center">
+        <div
+          className="
+            w-10
+            h-10
+            rounded-full
+            border-2
+            border-white/10
+            border-t-[#8B72FF]
+            animate-spin
+          "
+        />
+
+        <p className="mt-4 text-sm text-slate-500">Loading...</p>
+      </div>
     </div>
-  </div>
-);
+  );
+}
 
-// ============================================================
-// APP
-// ============================================================
+/* ============================================================
+   PUBLIC ONLY ROUTE
+============================================================ */
 
-const App = () => {
+function PublicOnlyRoute({ user, token, children }) {
+  if (user && token) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+/* ============================================================
+   HOME PAGE
+============================================================ */
+
+/*
+  IMPORTANT:
+
+  Logged OUT:
+
+      CommandLibrary
+      NO Sidebar
+
+  Logged IN:
+
+      Layout
+        ├── Sidebar
+        └── CommandLibrary
+*/
+
+function HomePage({ user, token, onLogout }) {
+  /* ---------------- LOGGED IN ---------------- */
+
+  if (user && token) {
+    return (
+      <Layout user={user} token={token} onLogout={onLogout}>
+        <CommandLibrary user={user} token={token} />
+      </Layout>
+    );
+  }
+
+  /* ---------------- LOGGED OUT ---------------- */
+
+  return <CommandLibrary user={null} token={null} />;
+}
+
+/* ============================================================
+   APP
+============================================================ */
+
+export default function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ==========================================================
-  // AUTH PERSIST
-  // ==========================================================
+  /* ==========================================================
+     PERSIST AUTH
+  ========================================================== */
 
   const persistAuth = useCallback((userData, tokenValue, remember = false) => {
     if (!tokenValue) {
-      console.error("[Auth] Missing token.");
+      console.error("[Auth] Token is missing.");
+
       return false;
     }
 
     const targetStorage = remember ? localStorage : sessionStorage;
+
     const otherStorage = remember ? sessionStorage : localStorage;
 
+    /* Remove stale auth from opposite storage */
+
     safeRemoveItem(otherStorage, STORAGE_KEYS.USER);
+
     safeRemoveItem(otherStorage, STORAGE_KEYS.TOKEN);
+
+    /* Save user */
 
     const userSaved = userData
       ? safeSetItem(targetStorage, STORAGE_KEYS.USER, JSON.stringify(userData))
       : true;
+
+    /* Save token */
 
     const tokenSaved = safeSetItem(
       targetStorage,
@@ -211,35 +276,47 @@ const App = () => {
       return false;
     }
 
+    /*
+        IMPORTANT:
+        Update React auth state immediately.
+      */
+
     setUser(userData || null);
     setToken(tokenValue);
 
     return true;
   }, []);
 
-  // ==========================================================
-  // CLEAR AUTH
-  // ==========================================================
+  /* ==========================================================
+     LOGOUT
+  ========================================================== */
 
-  const clearAuth = useCallback(() => {
-    safeRemoveItem(localStorage, STORAGE_KEYS.USER);
-    safeRemoveItem(localStorage, STORAGE_KEYS.TOKEN);
-    safeRemoveItem(sessionStorage, STORAGE_KEYS.USER);
-    safeRemoveItem(sessionStorage, STORAGE_KEYS.TOKEN);
+  const handleLogout = useCallback(() => {
+    /*
+      1. Clear local/session storage
+      2. Clear React state
+      3. Sidebar disappears automatically
+    */
+
+    clearStoredAuth();
 
     setUser(null);
     setToken(null);
   }, []);
 
-  // ==========================================================
-  // AUTH BOOTSTRAP
-  // ==========================================================
+  /* ==========================================================
+     AUTH BOOTSTRAP
+  ========================================================== */
 
   useEffect(() => {
     let mounted = true;
 
-    const bootstrapAuth = async () => {
+    async function bootstrapAuth() {
       const storedAuth = getStoredAuth();
+
+      /* ----------------------------------------------
+         No stored login
+      ---------------------------------------------- */
 
       if (!storedAuth.token) {
         if (mounted) {
@@ -247,32 +324,46 @@ const App = () => {
           setToken(null);
           setIsLoading(false);
         }
+
         return;
       }
 
-      // Show cached user immediately.
+      /* ----------------------------------------------
+         Restore cached auth immediately
+      ---------------------------------------------- */
+
       if (mounted) {
         setUser(storedAuth.user || null);
+
         setToken(storedAuth.token);
       }
 
+      /* ----------------------------------------------
+         API not configured
+      ---------------------------------------------- */
+
       if (!API_BASE) {
-        console.error("[Auth] API base URL is missing.");
+        console.warn("[Auth] API base URL is not configured.");
 
         if (mounted) {
-          clearAuth();
           setIsLoading(false);
         }
 
         return;
       }
 
+      /* ----------------------------------------------
+         Validate token
+      ---------------------------------------------- */
+
       try {
         const response = await axios.get(`${API_USER_URL}/me`, {
           headers: {
             Authorization: `Bearer ${storedAuth.token}`,
           },
+
           timeout: 10000,
+
           params: {
             _t: Date.now(),
           },
@@ -290,29 +381,39 @@ const App = () => {
       } catch (error) {
         const status = error?.response?.status;
 
-        console.warn("[Auth] Validation failed:", status || error?.message);
+        console.warn(
+          "[Auth] Token validation failed:",
+          status || error?.message,
+        );
 
-        // Only clear auth when backend confirms invalid token.
+        /*
+          Only clear auth if server explicitly
+          says token is invalid.
+        */
+
         if (mounted && (status === 401 || status === 403)) {
-          clearAuth();
+          clearStoredAuth();
+
+          setUser(null);
+          setToken(null);
         }
       } finally {
         if (mounted) {
           setIsLoading(false);
         }
       }
-    };
+    }
 
     bootstrapAuth();
 
     return () => {
       mounted = false;
     };
-  }, [clearAuth, persistAuth]);
+  }, [persistAuth]);
 
-  // ==========================================================
-  // LOGIN
-  // ==========================================================
+  /* ==========================================================
+     LOGIN
+  ========================================================== */
 
   const handleLogin = useCallback(
     (userData, remember, tokenValue) => {
@@ -320,14 +421,32 @@ const App = () => {
 
       if (!success) {
         console.error("[Login] Authentication persistence failed.");
+
+        return false;
       }
+
+      /*
+        DO NOT navigate here.
+
+        Login.jsx will navigate to "/"
+        after this function returns true.
+
+        React state is already updated,
+        so HomePage will render:
+
+          Layout
+            ├── Sidebar
+            └── CommandLibrary
+      */
+
+      return true;
     },
     [persistAuth],
   );
 
-  // ==========================================================
-  // SIGNUP
-  // ==========================================================
+  /* ==========================================================
+     SIGNUP
+  ========================================================== */
 
   const handleSignup = useCallback(
     (userData, remember, tokenValue) => {
@@ -335,35 +454,47 @@ const App = () => {
 
       if (!success) {
         console.error("[Signup] Authentication persistence failed.");
+
+        return false;
       }
+
+      return true;
     },
     [persistAuth],
   );
 
-  // ==========================================================
-  // LOADING
-  // ==========================================================
+  /* ==========================================================
+     INITIAL LOADING
+  ========================================================== */
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
-  // ==========================================================
-  // ROUTES
-  // ==========================================================
+  /* ==========================================================
+     ROUTES
+  ========================================================== */
 
   return (
     <>
       <ScrollToTop />
 
       <Routes>
-        {/* PUBLIC HOME */}
+        {/* ==================================================
+            HOME
+        ================================================== */}
+
         <Route
           path="/"
-          element={<CommandLibrary user={user} token={token} />}
+          element={
+            <HomePage user={user} token={token} onLogout={handleLogout} />
+          }
         />
 
-        {/* LOGIN */}
+        {/* ==================================================
+            LOGIN
+        ================================================== */}
+
         <Route
           path="/login"
           element={
@@ -373,7 +504,10 @@ const App = () => {
           }
         />
 
-        {/* SIGNUP */}
+        {/* ==================================================
+            SIGNUP
+        ================================================== */}
+
         <Route
           path="/signup"
           element={
@@ -383,26 +517,35 @@ const App = () => {
           }
         />
 
-        {/* REGISTER REDIRECT */}
+        {/* ==================================================
+            REGISTER
+        ================================================== */}
+
         <Route path="/register" element={<Navigate to="/signup" replace />} />
 
-        {/* OTP */}
+        {/* ==================================================
+            VERIFY OTP
+        ================================================== */}
+
         <Route path="/verify-otp" element={<VerifyOtp />} />
 
-        {/* FORGOT PASSWORD */}
+        {/* ==================================================
+            FORGOT PASSWORD
+        ================================================== */}
+
         <Route path="/forgotpassword" element={<ForgotPassword />} />
 
-        {/* BACKWARD COMPATIBILITY */}
         <Route
           path="/ForgotPassword"
           element={<Navigate to="/forgotpassword" replace />}
         />
 
-        {/* FALLBACK */}
+        {/* ==================================================
+            FALLBACK
+        ================================================== */}
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
-};
-
-export default App;
+}

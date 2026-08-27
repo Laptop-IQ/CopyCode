@@ -1,12 +1,6 @@
-/* eslint-disable react/react-in-jsx-scope */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// API CONFIG
-// ─────────────────────────────────────────────────────────────────────────────
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE ||
@@ -15,15 +9,10 @@ const API_BASE_URL = (
 ).replace(/\/+$/, "");
 
 const API_BASE = `${API_BASE_URL}/api/commands`;
-
 const REQUEST_TIMEOUT = 15000;
 const SEARCH_DEBOUNCE = 350;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CACHE CONFIG
-// ─────────────────────────────────────────────────────────────────────────────
-
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_KEY_PREFIX = `cmdkit-command-library-${CACHE_VERSION}`;
 
 const getCacheKey = (user) => {
@@ -48,7 +37,11 @@ const readCachedGroups = (user) => {
 
     const parsed = JSON.parse(raw);
 
-    return Array.isArray(parsed?.groups) ? parsed.groups : [];
+    if (!Array.isArray(parsed?.groups)) {
+      return [];
+    }
+
+    return parsed.groups;
   } catch {
     return [];
   }
@@ -65,7 +58,7 @@ const writeCachedGroups = (user, groups) => {
       }),
     );
   } catch {
-    // localStorage can be unavailable or full.
+   
   }
 };
 
@@ -73,26 +66,21 @@ const clearCachedGroups = (user) => {
   try {
     localStorage.removeItem(getCacheKey(user));
   } catch {
-    // Ignore cache errors.
+   
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 const TAG_COLORS = {
-  bash: "bg-gray-500/15 text-gray-300 border-gray-500/30",
   git: "bg-orange-500/15 text-orange-400 border-orange-500/30",
   npm: "bg-red-500/15 text-red-400 border-red-500/30",
-  docker: "bg-sky-500/15 text-sky-400 border-sky-500/30",
   javascript: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
   typescript: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   react: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  jsx: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  tsx: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   css: "bg-pink-500/15 text-pink-400 border-pink-500/30",
   json: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  code: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
-  other: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 const CODE_LANGUAGES = [
@@ -122,10 +110,6 @@ const ENTRY_TYPES = [
     description: "Complete code like ChatGPT output",
   },
 ];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ICONS
-// ─────────────────────────────────────────────────────────────────────────────
 
 const CheckIcon = ({ size = 14 }) => (
   <svg
@@ -260,23 +244,6 @@ const SearchIcon = ({ size = 14 }) => (
   </svg>
 );
 
-const CodeIcon = ({ size = 15 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-  </svg>
-);
-
 const LockIcon = ({ size = 14 }) => (
   <svg
     width={size}
@@ -313,9 +280,26 @@ const RefreshIcon = ({ size = 14 }) => (
   </svg>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+const getStoredToken = () => {
+  try {
+    return (
+      localStorage.getItem("token") || sessionStorage.getItem("token") || null
+    );
+  } catch {
+    return null;
+  }
+};
+
+const createClientId = () => {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
 
 const getErrorMessage = (error) => {
   if (error?.name === "AbortError") {
@@ -337,123 +321,36 @@ const getErrorMessage = (error) => {
   return "Something went wrong. Please try again.";
 };
 
-const getStoredToken = () => {
-  try {
-    return (
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token") ||
-      null
-    );
-  } catch {
-    return null;
-  }
-};
-
-const createClientId = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
+const normalizeGroups = (groups) => {
+  if (!Array.isArray(groups)) {
+    return [];
   }
 
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return groups.filter(Boolean);
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// API
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function request(url, options = {}) {
-  const timeoutController = new AbortController();
+  const controller = new AbortController();
 
   const timeoutId = window.setTimeout(() => {
-    timeoutController.abort();
+    controller.abort();
   }, REQUEST_TIMEOUT);
 
-  let combinedSignal = timeoutController.signal;
-
-  if (options.signal) {
-    if (options.signal.aborted) {
-      timeoutController.abort();
-    } else {
-      const externalSignal = options.signal;
-
-      const abortExternal = () => {
-        timeoutController.abort();
-      };
-
-      externalSignal.addEventListener("abort", abortExternal, {
-        once: true,
-      });
-
-      try {
-        const token = getStoredToken();
-
-        const headers = {
-          Accept: "application/json",
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...(options.headers || {}),
-        };
-
-        if (token && !headers.Authorization) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
-        const response = await fetch(url, {
-          ...options,
-          headers,
-          credentials: "include",
-          signal: combinedSignal,
-        });
-
-        let data = null;
-
-        const contentType = response.headers.get("content-type") || "";
-
-        if (contentType.includes("application/json")) {
-          try {
-            data = await response.json();
-          } catch {
-            data = null;
-          }
-        } else {
-          try {
-            const text = await response.text();
-            data = text ? { message: text } : null;
-          } catch {
-            data = null;
-          }
-        }
-
-        if (response.status === 401 || response.status === 403) {
-          const error = new Error(
-            data?.message || "Authentication required",
-          );
-
-          error.status = response.status;
-          error.data = data;
-
-          throw error;
-        }
-
-        if (!response.ok) {
-          const error = new Error(
-            data?.message ||
-              `Request failed with status ${response.status}`,
-          );
-
-          error.status = response.status;
-          error.data = data;
-
-          throw error;
-        }
-
-        return data || {};
-      } finally {
-        externalSignal.removeEventListener("abort", abortExternal);
-      }
-    }
-  }
+  let externalAbortHandler = null;
 
   try {
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        externalAbortHandler = () => controller.abort();
+
+        options.signal.addEventListener("abort", externalAbortHandler, {
+          once: true,
+        });
+      }
+    }
+
     const token = getStoredToken();
 
     const headers = {
@@ -468,9 +365,9 @@ async function request(url, options = {}) {
 
     const response = await fetch(url, {
       ...options,
-      credentials: "include",
       headers,
-      signal: combinedSignal,
+      credentials: "include",
+      signal: controller.signal,
     });
 
     let data = null;
@@ -493,9 +390,7 @@ async function request(url, options = {}) {
     }
 
     if (response.status === 401 || response.status === 403) {
-      const error = new Error(
-        data?.message || "Authentication required",
-      );
+      const error = new Error(data?.message || "Authentication required");
 
       error.status = response.status;
       error.data = data;
@@ -505,8 +400,7 @@ async function request(url, options = {}) {
 
     if (!response.ok) {
       const error = new Error(
-        data?.message ||
-          `Request failed with status ${response.status}`,
+        data?.message || `Request failed with status ${response.status}`,
       );
 
       error.status = response.status;
@@ -518,11 +412,19 @@ async function request(url, options = {}) {
     return data || {};
   } finally {
     window.clearTimeout(timeoutId);
+
+    if (options.signal && externalAbortHandler) {
+      options.signal.removeEventListener("abort", externalAbortHandler);
+    }
   }
 }
 
 const api = {
-  get: (url, options = {}) => request(url, options),
+  get: (url, options = {}) =>
+    request(url, {
+      ...options,
+      method: "GET",
+    }),
 
   post: (url, body, options = {}) =>
     request(url, {
@@ -545,9 +447,6 @@ const api = {
     }),
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COPY BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
 
 function CopyButton({ text, large = false }) {
   const [copied, setCopied] = useState(false);
@@ -564,6 +463,11 @@ function CopyButton({ text, large = false }) {
   const handleCopy = async () => {
     const value = text || "";
 
+    if (!value) {
+      toast.info("Nothing to copy.");
+      return;
+    }
+
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(value);
@@ -572,7 +476,8 @@ function CopyButton({ text, large = false }) {
 
         textarea.value = value;
         textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
 
         document.body.appendChild(textarea);
 
@@ -581,7 +486,7 @@ function CopyButton({ text, large = false }) {
 
         const successful = document.execCommand("copy");
 
-        document.body.removeChild(textarea);
+        textarea.remove();
 
         if (!successful) {
           throw new Error("Copy failed");
@@ -625,34 +530,41 @@ function CopyButton({ text, large = false }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMMAND CARD
-// ─────────────────────────────────────────────────────────────────────────────
-
-function CommandCard({ item, onDelete, onEdit }) {
-  const tagClass =
-    TAG_COLORS[item?.tag] || TAG_COLORS.other;
-
-  const commands = Array.isArray(item?.commands)
-    ? item.commands
-    : [];
+function CommandCard({ item, onDelete, onEdit, deleting }) {
+  const tagClass = TAG_COLORS[item?.tag] || TAG_COLORS.other;
+  const commands = Array.isArray(item?.commands) ? item.commands : [];
+  const groupId = item?._id || item?.id || item?.clientId || "unknown";
 
   return (
-    <article className="group bg-[#0d1117] border border-[#21262d] rounded-xl overflow-hidden hover:border-[#30363d] transition-all">
+    <article
+      className="
+        group bg-[#0d1117]
+        border border-[#21262d]
+        rounded-xl overflow-hidden
+        hover:border-[#30363d]
+        transition-all
+      "
+    >
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span
             className={`
-              text-[10px] font-bold px-2 py-0.5 rounded-md
-              uppercase tracking-wider shrink-0 border
-              ${tagClass}
+              text-[10px] font-bold px-2 py-0.5
+              rounded-md uppercase tracking-wider
+              shrink-0 border ${tagClass}
             `}
           >
             {item?.tag || "other"}
           </span>
 
           {item?.entryType && (
-            <span className="text-[10px] text-[#8b949e] bg-[#161b22] border border-[#21262d] px-2 py-0.5 rounded-md">
+            <span
+              className="
+                text-[10px] text-[#8b949e]
+                bg-[#161b22] border border-[#21262d]
+                px-2 py-0.5 rounded-md
+              "
+            >
               {item.entryType === "component"
                 ? "Full Component"
                 : item.entryType === "multi"
@@ -665,17 +577,39 @@ function CommandCard({ item, onDelete, onEdit }) {
             {item?.title || "Untitled"}
           </h3>
 
-          <span className="shrink-0 text-[10px] text-[#484f58] bg-[#161b22] border border-[#21262d] px-1.5 py-0.5 rounded-full">
+          <span
+            className="
+              shrink-0 text-[10px] text-[#484f58]
+              bg-[#161b22] border border-[#21262d]
+              px-1.5 py-0.5 rounded-full
+            "
+          >
             {commands.length} cmd
             {commands.length !== 1 ? "s" : ""}
           </span>
         </div>
 
-        <div className="flex items-center gap-1 ml-2 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-all">
+        <div
+          className="
+            flex items-center gap-1 ml-2 shrink-0
+            opacity-100 sm:opacity-0
+            sm:group-hover:opacity-100
+            focus-within:opacity-100
+            transition-all
+          "
+        >
           <button
             type="button"
             onClick={() => onEdit(item)}
-            className="p-1.5 rounded-md text-[#484f58] hover:text-[#58a6ff] hover:bg-[#161b22] transition-colors"
+            disabled={Boolean(deleting)}
+            className="
+              p-1.5 rounded-md
+              text-[#484f58]
+              hover:text-[#58a6ff]
+              hover:bg-[#161b22]
+              disabled:opacity-40
+              transition-colors
+            "
             title="Edit"
             aria-label={`Edit ${item?.title || "command group"}`}
           >
@@ -684,12 +618,20 @@ function CommandCard({ item, onDelete, onEdit }) {
 
           <button
             type="button"
-            onClick={() => onDelete(item?._id)}
-            className="p-1.5 rounded-md text-[#484f58] hover:text-red-400 hover:bg-[#161b22] transition-colors"
+            onClick={() => onDelete(groupId)}
+            disabled={Boolean(deleting)}
+            className="
+              p-1.5 rounded-md
+              text-[#484f58]
+              hover:text-red-400
+              hover:bg-[#161b22]
+              disabled:opacity-40
+              transition-colors
+            "
             title="Delete"
             aria-label={`Delete ${item?.title || "command group"}`}
           >
-            <TrashIcon />
+            {deleting ? <SpinnerIcon size={14} /> : <TrashIcon />}
           </button>
         </div>
       </div>
@@ -708,18 +650,34 @@ function CommandCard({ item, onDelete, onEdit }) {
               item?.entryType === "multi" ||
               item?.entryType === "component";
 
+            const commandKey =
+              command?._id || command?.id || `${groupId}-${index}`;
+
             return (
               <div
-                key={
-                  command?._id ||
-                  command?.id ||
-                  `${item?._id || "group"}-${index}`
-                }
-                className="bg-[#161b22] border border-[#21262d] rounded-lg overflow-hidden"
+                key={commandKey}
+                className="
+                  bg-[#161b22]
+                  border border-[#21262d]
+                  rounded-lg overflow-hidden
+                "
               >
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[#21262d]">
+                <div
+                  className="
+                    flex items-center justify-between gap-2
+                    px-3 py-2
+                    border-b border-[#21262d]
+                  "
+                >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-[#21262d] text-[#484f58] text-[9px] font-bold flex items-center justify-center">
+                    <span
+                      className="
+                        shrink-0 w-5 h-5 rounded-full
+                        bg-[#21262d] text-[#484f58]
+                        text-[9px] font-bold
+                        flex items-center justify-center
+                      "
+                    >
                       {index + 1}
                     </span>
 
@@ -739,16 +697,46 @@ function CommandCard({ item, onDelete, onEdit }) {
 
                 <div className="relative">
                   {isMultiLine ? (
-                    <pre className="overflow-x-auto overflow-y-auto max-h-[500px] p-4 text-[12px] leading-6 font-mono text-[#79c0ff] whitespace-pre">
+                    <pre
+                      className="
+                        overflow-x-auto overflow-y-auto
+                        max-h-[500px]
+                        p-4
+                        text-[12px]
+                        leading-6
+                        font-mono
+                        text-[#79c0ff]
+                        whitespace-pre
+                      "
+                    >
                       <code>{value}</code>
                     </pre>
                   ) : (
-                    <div className="px-3 py-2.5 flex items-center gap-2">
-                      <span className="text-[#3fb950] font-mono text-sm select-none">
+                    <div
+                      className="
+                        px-3 py-2.5
+                        flex items-center gap-2
+                      "
+                    >
+                      <span
+                        className="
+                          text-[#3fb950]
+                          font-mono text-sm
+                          select-none
+                        "
+                      >
                         $
                       </span>
 
-                      <code className="text-[12px] text-[#79c0ff] font-mono overflow-x-auto whitespace-nowrap">
+                      <code
+                        className="
+                          text-[12px]
+                          text-[#79c0ff]
+                          font-mono
+                          overflow-x-auto
+                          whitespace-nowrap
+                        "
+                      >
                         {value}
                       </code>
                     </div>
@@ -763,21 +751,8 @@ function CommandCard({ item, onDelete, onEdit }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CODE INPUT
-// ─────────────────────────────────────────────────────────────────────────────
-
-function CodeInput({
-  item,
-  index,
-  onChange,
-  onRemove,
-  canRemove,
-  entryType,
-}) {
-  const isCode =
-    entryType === "multi" ||
-    entryType === "component";
+function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
+  const isCode = entryType === "multi" || entryType === "component";
 
   const handleKeyDown = (event) => {
     if (event.key !== "Tab") {
@@ -785,16 +760,11 @@ function CodeInput({
     }
 
     event.preventDefault();
-
     const textarea = event.currentTarget;
-
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-
     const newValue =
-      textarea.value.substring(0, start) +
-      "  " +
-      textarea.value.substring(end);
+      textarea.value.substring(0, start) + "  " + textarea.value.substring(end);
 
     onChange({
       ...item,
@@ -808,19 +778,38 @@ function CodeInput({
   };
 
   return (
-    <div className="bg-[#161b22] border border-[#21262d] rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262d]">
-        <span className="shrink-0 w-5 h-5 rounded-full bg-[#21262d] text-[#484f58] text-[10px] font-bold flex items-center justify-center">
+    <div
+      className="
+        bg-[#161b22]
+        border border-[#21262d]
+        rounded-xl overflow-hidden
+      "
+    >
+      <div
+        className="
+          flex items-center gap-2
+          px-3 py-2
+          border-b border-[#21262d]
+        "
+      >
+        <span
+          className="
+            shrink-0 w-5 h-5 rounded-full
+            bg-[#21262d] text-[#484f58]
+            text-[10px] font-bold
+            flex items-center justify-center
+          "
+        >
           {index + 1}
         </span>
 
         <input
           type="text"
           value={item?.label || ""}
-          onChange={(e) =>
+          onChange={(event) =>
             onChange({
               ...item,
-              label: e.target.value,
+              label: event.target.value,
             })
           }
           maxLength={100}
@@ -829,14 +818,26 @@ function CodeInput({
               ? "Component / file name (optional)"
               : "Label (optional)"
           }
-          className="flex-1 min-w-0 bg-transparent text-[#8b949e] text-xs focus:outline-none placeholder-[#3d444d]"
+          className="
+            flex-1 min-w-0
+            bg-transparent
+            text-[#8b949e]
+            text-xs
+            focus:outline-none
+            placeholder-[#3d444d]
+          "
         />
 
         {canRemove && (
           <button
             type="button"
             onClick={onRemove}
-            className="shrink-0 p-1 text-[#484f58] hover:text-red-400 transition-colors"
+            className="
+              shrink-0 p-1
+              text-[#484f58]
+              hover:text-red-400
+              transition-colors
+            "
             title="Remove"
             aria-label={`Remove code block ${index + 1}`}
           >
@@ -848,10 +849,10 @@ function CodeInput({
       <div className="relative">
         <textarea
           value={item?.cmd || ""}
-          onChange={(e) =>
+          onChange={(event) =>
             onChange({
               ...item,
-              cmd: e.target.value,
+              cmd: event.target.value,
             })
           }
           onKeyDown={handleKeyDown}
@@ -874,23 +875,32 @@ export default function MyComponent() {
           maxLength={50000}
           spellCheck={false}
           className={`
-            block w-full resize-y bg-[#0d1117]
-            text-[#79c0ff] font-mono
-            text-[13px] leading-6
+            block w-full
+            resize-y
+            bg-[#0d1117]
+            text-[#79c0ff]
+            font-mono
+            text-[13px]
+            leading-6
             px-4 py-3
             focus:outline-none
             placeholder-[#3d444d]
-            ${
-              entryType === "single"
-                ? "min-h-[70px]"
-                : "min-h-[180px]"
-            }
+            ${entryType === "single" ? "min-h-[70px]" : "min-h-[180px]"}
           `}
         />
 
         {isCode && (
           <div className="absolute bottom-2 right-2 pointer-events-none">
-            <span className="text-[9px] text-[#484f58] bg-[#161b22]/90 px-2 py-1 rounded border border-[#21262d]">
+            <span
+              className="
+                text-[9px]
+                text-[#484f58]
+                bg-[#161b22]/90
+                px-2 py-1
+                rounded
+                border border-[#21262d]
+              "
+            >
               Tab = 2 spaces
             </span>
           </div>
@@ -900,49 +910,28 @@ export default function MyComponent() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMMAND MODAL
-// ─────────────────────────────────────────────────────────────────────────────
-
-function CommandModal({
-  editItem,
-  onClose,
-  onSave,
-  loading,
-}) {
+function CommandModal({ editItem, onClose, onSave, loading }) {
   const isEdit = Boolean(editItem);
 
-  const [title, setTitle] = useState(
-    editItem?.title || "",
-  );
+  const titleInputRef = useRef(null);
+
+  const [title, setTitle] = useState(editItem?.title || "");
 
   const [entryType, setEntryType] = useState(
     editItem?.entryType ||
-      (editItem?.commands?.some((c) =>
-        c?.cmd?.includes("\n"),
-      )
+      (editItem?.commands?.some((command) => command?.cmd?.includes("\n"))
         ? "multi"
         : "single"),
   );
 
-  const [tag, setTag] = useState(
-    editItem?.tag || "bash",
-  );
+  const [tag, setTag] = useState(editItem?.tag || "bash");
 
-  const [language, setLanguage] = useState(
-    editItem?.language || "bash",
-  );
+  const [language, setLanguage] = useState(editItem?.language || "bash");
 
   const [cmds, setCmds] = useState(() => {
-    if (
-      Array.isArray(editItem?.commands) &&
-      editItem.commands.length
-    ) {
+    if (Array.isArray(editItem?.commands) && editItem.commands.length > 0) {
       return editItem.commands.map((command) => ({
-        id:
-          command?._id ||
-          command?.id ||
-          createClientId(),
+        id: command?._id || command?.id || createClientId(),
         _id: command?._id,
         label: command?.label || "",
         cmd: command?.cmd || "",
@@ -958,32 +947,32 @@ function CommandModal({
     ];
   });
 
-  // Automatically suggest category for component code.
+  // Auto focus.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      titleInputRef.current?.focus();
+    }, 50);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  // Auto category.
   useEffect(() => {
     if (entryType !== "component") {
       return;
     }
 
-    if (
-      language === "jsx" ||
-      language === "tsx"
-    ) {
+    if (language === "jsx" || language === "tsx") {
       setTag("react");
       return;
     }
 
-    if (
-      language === "javascript" ||
-      language === "typescript"
-    ) {
+    if (language === "javascript" || language === "typescript") {
       setTag(language);
       return;
     }
 
-    if (
-      language === "css" ||
-      language === "json"
-    ) {
+    if (language === "css" || language === "json") {
       setTag(language);
       return;
     }
@@ -1004,15 +993,15 @@ function CommandModal({
 
   const updateCmd = (index, value) => {
     setCmds((previous) =>
-      previous.map((command, i) =>
-        i === index ? value : command,
+      previous.map((command, itemIndex) =>
+        itemIndex === index ? value : command,
       ),
     );
   };
 
   const removeCmd = (index) => {
     setCmds((previous) =>
-      previous.filter((_, i) => i !== index),
+      previous.filter((_, itemIndex) => itemIndex !== index),
     );
   };
 
@@ -1028,9 +1017,7 @@ function CommandModal({
 
     const cleanedCommands = cmds
       .map((command) => ({
-        ...(command?._id
-          ? { _id: command._id }
-          : {}),
+        ...(command?._id ? { _id: command._id } : {}),
         label: command?.label?.trim() || "",
         cmd: command?.cmd || "",
       }))
@@ -1047,18 +1034,13 @@ function CommandModal({
   };
 
   const handleKeyDown = (event) => {
-    if (
-      event.key === "Escape" &&
-      !loading
-    ) {
+    if (event.key === "Escape" && !loading) {
+      event.preventDefault();
       onClose();
       return;
     }
 
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.key === "Enter"
-    ) {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
       handleSave();
     }
@@ -1066,15 +1048,18 @@ function CommandModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-sm"
+      className="
+        fixed inset-0 z-50
+        flex items-center justify-center
+        p-3 sm:p-5
+        bg-black/80
+        backdrop-blur-sm
+      "
       role="dialog"
       aria-modal="true"
       aria-labelledby="command-modal-title"
       onMouseDown={(event) => {
-        if (
-          event.target === event.currentTarget &&
-          !loading
-        ) {
+        if (event.target === event.currentTarget && !loading) {
           onClose();
         }
       }}
@@ -1091,20 +1076,37 @@ function CommandModal({
         "
         onKeyDown={handleKeyDown}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#21262d] shrink-0">
-          <div>
+        {/* HEADER */}
+        <div
+          className="
+            flex items-center justify-between
+            px-5 py-4
+            border-b border-[#21262d]
+            shrink-0
+          "
+        >
+          <div className="min-w-0">
             <h2
               id="command-modal-title"
-              className="text-sm font-semibold text-[#e6edf3]"
+              className="
+                text-sm font-semibold
+                text-[#e6edf3]
+              "
             >
               {isEdit
                 ? "Edit Code / Command Group"
                 : "Add New Code / Command Group"}
             </h2>
 
-            <p className="text-[11px] text-[#484f58] mt-1">
-              Single line, multiple lines, ya
-              complete component code save karein.
+            <p
+              className="
+                text-[11px]
+                text-[#484f58]
+                mt-1
+              "
+            >
+              Single line, multiple lines, ya complete component code save
+              karein.
             </p>
           </div>
 
@@ -1112,61 +1114,103 @@ function CommandModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="p-1.5 text-[#484f58] hover:text-[#e6edf3] disabled:opacity-40"
+            className="
+              p-1.5
+              text-[#484f58]
+              hover:text-[#e6edf3]
+              disabled:opacity-40
+            "
             aria-label="Close modal"
           >
             <XIcon />
           </button>
         </div>
 
-        <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1">
+        {/* BODY */}
+        <div
+          className="
+            p-4 sm:p-5
+            space-y-5
+            overflow-y-auto
+            flex-1
+          "
+        >
+          {/* TITLE */}
           <div>
-            <label className="block text-[10px] font-semibold text-[#8b949e] mb-1.5 uppercase tracking-widest">
+            <label
+              htmlFor="command-group-title"
+              className="
+                block
+                text-[10px]
+                font-semibold
+                text-[#8b949e]
+                mb-1.5
+                uppercase
+                tracking-widest
+              "
+            >
               Group Title
             </label>
 
             <input
+              ref={titleInputRef}
+              id="command-group-title"
               type="text"
               value={title}
-              onChange={(e) =>
-                setTitle(e.target.value)
-              }
+              onChange={(event) => setTitle(event.target.value)}
               placeholder="e.g. React User Dashboard"
               maxLength={200}
-              autoFocus
               className="
-                w-full bg-[#161b22]
+                w-full
+                bg-[#161b22]
                 border border-[#30363d]
                 text-[#e6edf3]
-                text-sm rounded-lg
+                text-sm
+                rounded-lg
                 px-3 py-2.5
                 placeholder-[#3d444d]
                 focus:outline-none
                 focus:border-[#58a6ff]
               "
             />
+
+            <div className="flex justify-end mt-1">
+              <span className="text-[9px] text-[#484f58]">
+                {title.length}/200
+              </span>
+            </div>
           </div>
 
+          {/* ENTRY TYPE */}
           <div>
-            <label className="block text-[10px] font-semibold text-[#8b949e] mb-2 uppercase tracking-widest">
+            <label
+              className="
+                block
+                text-[10px]
+                font-semibold
+                text-[#8b949e]
+                mb-2
+                uppercase
+                tracking-widest
+              "
+            >
               Content Type
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {ENTRY_TYPES.map((type) => {
-                const active =
-                  entryType === type.value;
+                const active = entryType === type.value;
 
                 return (
                   <button
                     type="button"
                     key={type.value}
-                    onClick={() =>
-                      setEntryType(type.value)
-                    }
+                    onClick={() => setEntryType(type.value)}
                     aria-pressed={active}
                     className={`
-                      text-left p-3 rounded-lg border transition-all
+                      text-left p-3
+                      rounded-lg border
+                      transition-all
                       ${
                         active
                           ? "bg-[#1f6feb]/10 border-[#58a6ff] text-[#e6edf3]"
@@ -1175,7 +1219,6 @@ function CommandModal({
                     `}
                   >
                     <div className="flex items-center gap-2">
-                      <CodeIcon />
                       <span className="text-xs font-semibold">
                         {type.label}
                       </span>
@@ -1190,22 +1233,35 @@ function CommandModal({
             </div>
           </div>
 
+          {/* LANGUAGE / CATEGORY */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-semibold text-[#8b949e] mb-1.5 uppercase tracking-widest">
+              <label
+                htmlFor="command-language"
+                className="
+                  block
+                  text-[10px]
+                  font-semibold
+                  text-[#8b949e]
+                  mb-1.5
+                  uppercase
+                  tracking-widest
+                "
+              >
                 Language
               </label>
 
               <select
+                id="command-language"
                 value={language}
-                onChange={(e) =>
-                  setLanguage(e.target.value)
-                }
+                onChange={(event) => setLanguage(event.target.value)}
                 className="
-                  w-full bg-[#161b22]
+                  w-full
+                  bg-[#161b22]
                   border border-[#30363d]
                   text-[#e6edf3]
-                  text-sm rounded-lg
+                  text-sm
+                  rounded-lg
                   px-3 py-2.5
                   focus:outline-none
                   focus:border-[#58a6ff]
@@ -1224,43 +1280,59 @@ function CommandModal({
             </div>
 
             <div>
-              <label className="block text-[10px] font-semibold text-[#8b949e] mb-1.5 uppercase tracking-widest">
+              <label
+                htmlFor="command-category"
+                className="
+                  block
+                  text-[10px]
+                  font-semibold
+                  text-[#8b949e]
+                  mb-1.5
+                  uppercase
+                  tracking-widest
+                "
+              >
                 Category
               </label>
 
               <select
+                id="command-category"
                 value={tag}
-                onChange={(e) =>
-                  setTag(e.target.value)
-                }
+                onChange={(event) => setTag(event.target.value)}
                 className="
-                  w-full bg-[#161b22]
+                  w-full
+                  bg-[#161b22]
                   border border-[#30363d]
                   text-[#e6edf3]
-                  text-sm rounded-lg
+                  text-sm
+                  rounded-lg
                   px-3 py-2.5
                   focus:outline-none
                   focus:border-[#58a6ff]
                 "
               >
-                {Object.keys(TAG_COLORS).map(
-                  (item) => (
-                    <option
-                      key={item}
-                      value={item}
-                      className="bg-[#0d1117]"
-                    >
-                      {item}
-                    </option>
-                  ),
-                )}
+                {Object.keys(TAG_COLORS).map((item) => (
+                  <option key={item} value={item} className="bg-[#0d1117]">
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
 
+          {/* CODE BLOCKS */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-[10px] font-semibold text-[#8b949e] uppercase tracking-widest">
+              <label
+                className="
+                  block
+                  text-[10px]
+                  font-semibold
+                  text-[#8b949e]
+                  uppercase
+                  tracking-widest
+                "
+              >
                 {entryType === "component"
                   ? "Full Component Code"
                   : entryType === "multi"
@@ -1281,20 +1353,12 @@ function CommandModal({
             <div className="space-y-2">
               {cmds.map((command, index) => (
                 <CodeInput
-                  key={
-                    command?._id ||
-                    command?.id ||
-                    index
-                  }
+                  key={command?._id || command?.id || index}
                   item={command}
                   index={index}
                   entryType={entryType}
-                  onChange={(value) =>
-                    updateCmd(index, value)
-                  }
-                  onRemove={() =>
-                    removeCmd(index)
-                  }
+                  onChange={(value) => updateCmd(index, value)}
+                  onRemove={() => removeCmd(index)}
                   canRemove={cmds.length > 1}
                 />
               ))}
@@ -1304,10 +1368,13 @@ function CommandModal({
               type="button"
               onClick={addCmd}
               className="
-                mt-2.5 w-full
-                flex items-center justify-center gap-1.5
+                mt-2.5gin to
+                w-full
+                flex items-center
+                justify-center gap-1.5
                 py-2.5
-                border border-dashed border-[#30363d]
+                border border-dashed
+                border-[#30363d]
                 hover:border-[#58a6ff]
                 hover:text-[#58a6ff]
                 text-[#484f58]
@@ -1322,7 +1389,19 @@ function CommandModal({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-t border-[#21262d] shrink-0">
+        {/* FOOTER */}
+        <div
+          className="
+            flex flex-col
+            sm:flex-row
+            sm:items-center
+            sm:justify-between
+            gap-3
+            px-5 py-4
+            border-t border-[#21262d]
+            shrink-0
+          "
+        >
           <p className="text-[10px] text-[#484f58]">
             Tip: Ctrl + Enter / Cmd + Enter to save
           </p>
@@ -1334,7 +1413,8 @@ function CommandModal({
               disabled={loading}
               className="
                 px-4 py-2
-                text-sm text-[#8b949e]
+                text-sm
+                text-[#8b949e]
                 hover:text-[#e6edf3]
                 disabled:opacity-40
               "
@@ -1367,11 +1447,7 @@ function CommandModal({
                 <PlusIcon size={14} />
               )}
 
-              {loading
-                ? "Saving..."
-                : isEdit
-                  ? "Save Changes"
-                  : "Add Group"}
+              {loading ? "Saving..." : isEdit ? "Save Changes" : "Add Group"}
             </button>
           </div>
         </div>
@@ -1408,61 +1484,120 @@ function LoginButton({ onLogin }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EMPTY STATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EmptyState({
+  hasFilters,
+  isLoggedIn,
+  onClearFilters,
+  onLogin,
+  onAdd,
+}) {
+  return (
+    <div
+      className="
+        flex flex-col
+        items-center
+        justify-center
+        py-20
+        text-center
+      "
+    >
+      <div
+        className="
+          w-12 h-12
+          bg-[#0d1117]
+          border border-[#21262d]
+          rounded-xl
+          flex items-center
+          justify-center
+          mb-3
+          text-[#484f58]
+        "
+      >
+        <SearchIcon size={20} />
+      </div>
+
+      <p className="text-[#484f58] text-sm">
+        {hasFilters
+          ? "No groups match your filter."
+          : "No commands yet. Add your first group!"}
+      </p>
+
+      {hasFilters ? (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="
+            mt-2
+            text-[#58a6ff]
+            text-xs
+            hover:underline
+          "
+        >
+          Clear filters
+        </button>
+      ) : isLoggedIn ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="
+            mt-3
+            inline-flex items-center
+            gap-1.5
+            text-[#58a6ff]
+            text-xs
+            hover:underline
+          "
+        >
+          <PlusIcon size={12} />
+          Add your first group
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onLogin}
+          className="
+            mt-3
+            text-[#58a6ff]
+            text-xs
+            hover:underline
+          "
+        >
+          Login to add your first group
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function CommandLibrary({
-  user,
-  token,
-}) {
+export default function CommandLibrary({ user, token }) {
   const navigate = useNavigate();
+  const isLoggedIn = Boolean(user && token);
+  const initialCacheRef = useRef(null);
 
-  // IMPORTANT:
-  // Cache is read synchronously so refresh does not show an empty/loading page.
-  const cachedGroups = useMemo(
-    () => readCachedGroups(user),
-    [user],
-  );
+  if (initialCacheRef.current === null) {
+    initialCacheRef.current = readCachedGroups(user);
+  }
 
-  const [groups, setGroups] = useState(
-    () => cachedGroups,
-  );
-
-  const [loading, setLoading] = useState(
-    () => cachedGroups.length === 0,
-  );
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
+  const [groups, setGroups] = useState(initialCacheRef.current);
+  const [loading, setLoading] = useState(initialCacheRef.current.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [deletingId, setDeletingId] =
-    useState(null);
-
-  const [apiError, setApiError] =
-    useState(null);
-
-  const [showModal, setShowModal] =
-    useState(false);
-
-  const [editItem, setEditItem] =
-    useState(null);
-
+  const [deletingId, setDeletingId] = useState(null);
+  const [apiError, setApiError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState("");
-
-  const [filterTag, setFilterTag] =
-    useState("all");
-
-  const mountedRef = useRef(true);
-
+  const [filterTag, setFilterTag] = useState("all");
+  const mountedRef = useRef(false);
   const fetchAbortRef = useRef(null);
-
   const requestIdRef = useRef(0);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // MOUNT / UNMOUNT
-  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1472,30 +1607,28 @@ export default function CommandLibrary({
 
       if (fetchAbortRef.current) {
         fetchAbortRef.current.abort();
+        fetchAbortRef.current = null;
       }
     };
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // UPDATE CACHE WHEN USER CHANGES
-  // ─────────────────────────────────────────────────────────────────────────
-
   useEffect(() => {
     const cached = readCachedGroups(user);
 
-    if (!mountedRef.current) {
-      return;
-    }
-
     setGroups(cached);
     setLoading(cached.length === 0);
+    setApiError(null);
+
+    setShowModal(false);
+    setEditItem(null);
+
+    if (fetchAbortRef.current) {
+      fetchAbortRef.current.abort();
+      fetchAbortRef.current = null;
+    }
+
+    requestIdRef.current += 1;
   }, [user]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // AUTH
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const isLoggedIn = Boolean(user && token);
 
   const redirectToLogin = useCallback(() => {
     navigate("/login", {
@@ -1508,9 +1641,7 @@ export default function CommandLibrary({
 
   const requireLogin = useCallback(() => {
     if (!isLoggedIn) {
-      toast.info(
-        "Please login first to add or edit commands.",
-      );
+      toast.info("Please login first to add or edit commands.");
 
       redirectToLogin();
 
@@ -1520,17 +1651,15 @@ export default function CommandLibrary({
     return true;
   }, [isLoggedIn, redirectToLogin]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FETCH
-  // ─────────────────────────────────────────────────────────────────────────
-
   const fetchGroups = useCallback(
-    async ({ silent = false } = {}) => {
+    async ({
+      silent = false,
+      searchValue = search,
+      tagValue = filterTag,
+    } = {}) => {
       if (!API_BASE_URL) {
         if (mountedRef.current) {
-          setApiError(
-            "API URL is not configured. Please set VITE_API_BASE.",
-          );
+          setApiError("API URL is not configured. Please set VITE_API_BASE.");
           setLoading(false);
           setRefreshing(false);
         }
@@ -1542,16 +1671,11 @@ export default function CommandLibrary({
         fetchAbortRef.current.abort();
       }
 
-      const controller =
-        new AbortController();
-
+      const controller = new AbortController();
       fetchAbortRef.current = controller;
-
-      const requestId =
-        ++requestIdRef.current;
-
-      const hasExistingData =
-        groups.length > 0;
+      const requestId = ++requestIdRef.current;
+      const trimmedSearch = searchValue.trim();
+      const hasExistingData = groups.length > 0;
 
       if (mountedRef.current) {
         setApiError(null);
@@ -1564,70 +1688,43 @@ export default function CommandLibrary({
       }
 
       try {
-        const params =
-          new URLSearchParams();
+        const params = new URLSearchParams();
 
-        if (filterTag !== "all") {
-          params.set("tag", filterTag);
+        if (tagValue !== "all") {
+          params.set("tag", tagValue);
         }
-
-        const trimmedSearch =
-          search.trim();
 
         if (trimmedSearch) {
-          params.set(
-            "search",
-            trimmedSearch,
-          );
+          params.set("search", trimmedSearch);
         }
 
-        const query =
-          params.toString();
+        const query = params.toString();
 
-        const url = query
-          ? `${API_BASE}?${query}`
-          : API_BASE;
+        const url = query ? `${API_BASE}?${query}` : API_BASE;
 
-        const response =
-          await api.get(url, {
-            signal: controller.signal,
-          });
+        const response = await api.get(url, {
+          signal: controller.signal,
+        });
 
-        if (
-          !mountedRef.current ||
-          requestId !== requestIdRef.current
-        ) {
+        if (!mountedRef.current || requestId !== requestIdRef.current) {
           return;
         }
 
         if (response?.success) {
-          const nextGroups =
-            Array.isArray(response.data)
-              ? response.data
-              : [];
+          const nextGroups = normalizeGroups(response.data);
 
           setGroups(nextGroups);
 
-          // Only cache unfiltered library data.
-          // Search/filter results should not overwrite the main cache.
-          if (
-            !trimmedSearch &&
-            filterTag === "all"
-          ) {
-            writeCachedGroups(
-              user,
-              nextGroups,
-            );
+          // Only cache the unfiltered library.
+          if (!trimmedSearch && tagValue === "all") {
+            writeCachedGroups(user, nextGroups);
           }
         } else {
           if (!hasExistingData) {
             setGroups([]);
           }
 
-          setApiError(
-            response?.message ||
-              "Unable to load commands.",
-          );
+          setApiError(response?.message || "Unable to load commands.");
         }
       } catch (error) {
         if (
@@ -1638,60 +1735,43 @@ export default function CommandLibrary({
           return;
         }
 
-        if (
-          error?.status === 401 ||
-          error?.status === 403
-        ) {
-          setApiError(
-            "Your login session has expired. Please login again.",
-          );
+        if (error?.status === 401 || error?.status === 403) {
+          setApiError("Your login session has expired. Please login again.");
         } else {
-          // Do not destroy cached data on network failure.
-          setApiError(
-            getErrorMessage(error) ||
-              "Cannot connect to backend.",
-          );
+          // Preserve cached/current UI data.
+          setApiError(getErrorMessage(error) || "Cannot connect to backend.");
         }
       } finally {
-        if (
-          mountedRef.current &&
-          requestId === requestIdRef.current
-        ) {
+        if (mountedRef.current && requestId === requestIdRef.current) {
           setLoading(false);
           setRefreshing(false);
         }
       }
     },
-    [
-      filterTag,
-      search,
-      user,
-      groups.length,
-    ],
+    [filterTag, groups.length, search, user],
   );
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INITIAL + SEARCH/FILTER FETCH
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // SEARCH / FILTER FETCH
+  // ───────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       fetchGroups({
-        silent: groups.length > 0,
+        silent: true,
+        searchValue: search,
+        tagValue: filterTag,
       });
     }, SEARCH_DEBOUNCE);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [
-    fetchGroups,
-    groups.length,
-  ]);
+  }, [search, filterTag, fetchGroups]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // AUTH CHANGED
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // AUTH MODAL SAFETY
+  // ───────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isLoggedIn && showModal) {
@@ -1700,9 +1780,9 @@ export default function CommandLibrary({
     }
   }, [isLoggedIn, showModal]);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
   // SAVE
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   const handleSave = async ({
     id,
@@ -1717,19 +1797,17 @@ export default function CommandLibrary({
     }
 
     if (!title?.trim()) {
-      toast.error(
-        "Group title is required.",
-      );
+      toast.error("Group title is required.");
       return;
     }
 
-    if (
-      !Array.isArray(commands) ||
-      commands.length === 0
-    ) {
-      toast.error(
-        "Add at least one code block.",
-      );
+    if (title.trim().length > 200) {
+      toast.error("Group title must be 200 characters or less.");
+      return;
+    }
+
+    if (!Array.isArray(commands) || commands.length === 0) {
+      toast.error("Add at least one code block.");
       return;
     }
 
@@ -1749,28 +1827,19 @@ export default function CommandLibrary({
       };
 
       const response = id
-        ? await api.put(
-            `${API_BASE}/${encodeURIComponent(
-              id,
-            )}`,
-            payload,
-          )
-        : await api.post(
-            API_BASE,
-            payload,
-          );
+        ? await api.put(`${API_BASE}/${encodeURIComponent(id)}`, payload)
+        : await api.post(API_BASE, payload);
 
       if (!response?.success) {
-        throw new Error(
-          response?.message ||
-            "Unable to save group.",
-        );
+        const error = new Error(response?.message || "Unable to save group.");
+
+        error.status = response?.status;
+
+        throw error;
       }
 
       toast.success(
-        id
-          ? "Group updated successfully."
-          : "Group created successfully.",
+        id ? "Group updated successfully." : "Group created successfully.",
       );
 
       if (mountedRef.current) {
@@ -1778,18 +1847,13 @@ export default function CommandLibrary({
         setEditItem(null);
       }
 
-      // Refresh from server after save.
+      // Refresh current server view.
       await fetchGroups({
         silent: true,
       });
     } catch (error) {
-      if (
-        error?.status === 401 ||
-        error?.status === 403
-      ) {
-        toast.error(
-          "Your login session has expired.",
-        );
+      if (error?.status === 401 || error?.status === 403) {
+        toast.error("Your login session has expired.");
 
         if (mountedRef.current) {
           setShowModal(false);
@@ -1798,10 +1862,7 @@ export default function CommandLibrary({
 
         redirectToLogin();
       } else if (mountedRef.current) {
-        toast.error(
-          getErrorMessage(error) ||
-            "Failed to save group.",
-        );
+        toast.error(getErrorMessage(error) || "Failed to save group.");
       }
     } finally {
       if (mountedRef.current) {
@@ -1810,9 +1871,9 @@ export default function CommandLibrary({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
   // DELETE
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   const handleDelete = async (id) => {
     if (!requireLogin() || !id) {
@@ -1834,54 +1895,41 @@ export default function CommandLibrary({
     setDeletingId(id);
 
     try {
-      const response =
-        await api.delete(
-          `${API_BASE}/${encodeURIComponent(
-            id,
-          )}`,
-        );
+      const response = await api.delete(
+        `${API_BASE}/${encodeURIComponent(id)}`,
+      );
 
       if (!response?.success) {
-        throw new Error(
-          response?.message ||
-            "Unable to delete group.",
-        );
+        const error = new Error(response?.message || "Unable to delete group.");
+
+        error.status = response?.status;
+
+        throw error;
       }
 
       toast.success("Group deleted.");
 
       if (mountedRef.current) {
         setGroups((previous) => {
-          const nextGroups =
-            previous.filter(
-              (group) =>
-                group?._id !== id,
-            );
-
-          // Update cache immediately.
-          writeCachedGroups(
-            user,
-            nextGroups,
+          const nextGroups = previous.filter(
+            (group) => group?._id !== id && group?.id !== id,
           );
+
+          // Only update main cache.
+          if (search.trim() === "" && filterTag === "all") {
+            writeCachedGroups(user, nextGroups);
+          }
 
           return nextGroups;
         });
       }
     } catch (error) {
-      if (
-        error?.status === 401 ||
-        error?.status === 403
-      ) {
-        toast.error(
-          "Your login session has expired.",
-        );
+      if (error?.status === 401 || error?.status === 403) {
+        toast.error("Your login session has expired.");
 
         redirectToLogin();
       } else if (mountedRef.current) {
-        toast.error(
-          getErrorMessage(error) ||
-            "Failed to delete.",
-        );
+        toast.error(getErrorMessage(error) || "Failed to delete.");
       }
     } finally {
       if (mountedRef.current) {
@@ -1890,9 +1938,9 @@ export default function CommandLibrary({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
   // MODAL
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   const openAdd = () => {
     if (!requireLogin()) {
@@ -1908,10 +1956,8 @@ export default function CommandLibrary({
       return;
     }
 
-    if (!item?._id) {
-      toast.error(
-        "Invalid command group.",
-      );
+    if (!item?._id && !item?.id) {
+      toast.error("Invalid command group.");
       return;
     }
 
@@ -1928,57 +1974,69 @@ export default function CommandLibrary({
     setEditItem(null);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
   // STATS
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   const totalCmds = useMemo(
     () =>
       groups.reduce(
         (sum, group) =>
-          sum +
-          (Array.isArray(
-            group?.commands,
-          )
-            ? group.commands.length
-            : 0),
+          sum + (Array.isArray(group?.commands) ? group.commands.length : 0),
         0,
       ),
     [groups],
   );
 
-  const allTags = useMemo(
-    () => [
-      "all",
-      ...Object.keys(TAG_COLORS),
-    ],
-    [],
-  );
+  const allTags = useMemo(() => ["all", ...Object.keys(TAG_COLORS)], []);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const hasFilters = Boolean(search.trim()) || filterTag !== "all";
+
+  // ───────────────────────────────────────────────────────────────────────────
   // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#010409] text-[#e6edf3] font-sans">
-      {/* NAVBAR */}
+    <div
+      className="
+        min-h-screen
+        bg-[#010409]
+        text-[#e6edf3]
+        font-sans
+      "
+    >
+      {/* ─────────────────────────────────────────────────────────────────────
+          NAVBAR
+      ───────────────────────────────────────────────────────────────────── */}
 
-      <header className="sticky top-0 z-40 border-b border-[#21262d] bg-[#010409]/90 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 bg-gradient-to-br from-[#58a6ff] to-[#bc8cff] rounded-md flex items-center justify-center shrink-0">
-              <CodeIcon size={13} />
-            </div>
-
-            <span className="font-semibold text-sm tracking-tight">
-              CmdKit
-            </span>
-          </div>
-
+      <header
+        className="
+          sticky top-0 z-40
+          border-b border-[#21262d]
+          bg-[#010409]/90
+          backdrop-blur-md
+        "
+      >
+        <div
+          className="
+            max-w-5xl mx-auto
+            px-4
+            h-14
+            flex items-center
+            justify-between
+            gap-4
+          "
+        >
+        
           <div className="flex items-center gap-2">
             {refreshing && (
               <div
-                className="hidden sm:flex items-center gap-1.5 text-[10px] text-[#484f58]"
+                className="
+                  hidden sm:flex
+                  items-center gap-1.5
+                  text-[10px]
+                  text-[#484f58]
+                "
                 role="status"
                 aria-live="polite"
               >
@@ -1992,7 +2050,8 @@ export default function CommandLibrary({
                 type="button"
                 onClick={openAdd}
                 className="
-                  flex items-center gap-1.5
+                  flex items-center
+                  gap-1.5
                   px-3.5 py-1.5
                   bg-[#238636]
                   hover:bg-[#2ea043]
@@ -2006,53 +2065,95 @@ export default function CommandLibrary({
                 New Group
               </button>
             ) : (
-              <LoginButton
-                onLogin={redirectToLogin}
-              />
+              <LoginButton onLogin={redirectToLogin} />
             )}
           </div>
         </div>
       </header>
 
-      {/* MAIN */}
+      {/* ─────────────────────────────────────────────────────────────────────
+          MAIN
+      ───────────────────────────────────────────────────────────────────── */}
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main
+        className="
+          max-w-5xl
+          mx-auto
+          px-4
+          py-8
+        "
+      >
+        {/* TITLE */}
         <div className="mb-7">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div
+            className="
+              flex flex-col
+              sm:flex-row
+              sm:items-end
+              sm:justify-between
+              gap-3
+            "
+          >
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">
+              <h1
+                className="
+                  text-2xl
+                  font-bold
+                  tracking-tight
+                "
+              >
                 Command Library
               </h1>
 
-              <p className="text-sm text-[#484f58] mt-1">
+              <p
+                className="
+                  text-sm
+                  text-[#484f58]
+                  mt-1
+                "
+              >
                 {loading && groups.length === 0
                   ? "Loading..."
                   : `${groups.length} group${
-                      groups.length !== 1
-                        ? "s"
-                        : ""
+                      groups.length !== 1 ? "s" : ""
                     } · ${totalCmds} ${
-                      totalCmds !== 1
-                        ? "code blocks"
-                        : "code block"
+                      totalCmds !== 1 ? "code blocks" : "code block"
                     }`}
               </p>
             </div>
 
             {!isLoggedIn && (
-              <div className="flex items-center gap-2 text-[11px] text-[#8b949e]">
+              <div
+                className="
+                  flex items-center
+                  gap-2
+                  text-[11px]
+                  text-[#8b949e]
+                "
+              >
                 <LockIcon size={13} />
-                Login required to add, edit or
-                delete.
+                Login required to add, edit or delete.
               </div>
             )}
           </div>
         </div>
 
         {/* ERROR */}
-
         {apiError && (
-          <div className="mb-5 flex items-start gap-3 bg-red-500/10 border border-red-500/25 text-red-400 rounded-xl px-4 py-3 text-sm">
+          <div
+            className="
+              mb-5
+              flex items-start
+              gap-3
+              bg-red-500/10
+              border border-red-500/25
+              text-red-400
+              rounded-xl
+              px-4 py-3
+              text-sm
+            "
+            role="alert"
+          >
             <svg
               className="shrink-0 mt-0.5"
               width="16"
@@ -2063,48 +2164,36 @@ export default function CommandLibrary({
               strokeWidth="2"
               aria-hidden="true"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
-              <line
-                x1="12"
-                y1="8"
-                x2="12"
-                y2="12"
-              />
-              <line
-                x1="12"
-                y1="16"
-                x2="12.01"
-                y2="16"
-              />
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
 
             <div className="flex-1 min-w-0">
-              <p className="font-medium">
-                Backend Connection Error
-              </p>
+              <p className="font-medium">Backend Connection Error</p>
 
-              <p className="text-red-400/70 text-xs mt-0.5">
-                {apiError}
-              </p>
+              <p className="text-red-400/70 text-xs mt-0.5">{apiError}</p>
 
               <button
                 type="button"
                 onClick={() =>
                   fetchGroups({
-                    silent:
-                      groups.length > 0,
+                    silent: groups.length > 0,
                   })
                 }
                 disabled={refreshing}
-                className="mt-1.5 inline-flex items-center gap-1.5 text-xs underline hover:text-red-300 disabled:opacity-50"
+                className="
+                  mt-1.5
+                  inline-flex
+                  items-center
+                  gap-1.5
+                  text-xs
+                  underline
+                  hover:text-red-300
+                  disabled:opacity-50
+                "
               >
-                {refreshing && (
-                  <SpinnerIcon size={11} />
-                )}
+                {refreshing && <SpinnerIcon size={11} />}
                 Retry
               </button>
             </div>
@@ -2112,19 +2201,31 @@ export default function CommandLibrary({
         )}
 
         {/* SEARCH + FILTER */}
-
-        <div className="flex flex-col lg:flex-row gap-3 mb-6">
+        <div
+          className="
+            flex flex-col
+            lg:flex-row
+            gap-3
+            mb-6
+          "
+        >
           <div className="relative flex-1">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#484f58]">
+            <div
+              className="
+                absolute
+                left-3
+                top-1/2
+                -translate-y-1/2
+                text-[#484f58]
+              "
+            >
               <SearchIcon />
             </div>
 
             <input
               type="search"
               value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
-              }
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search title, label or code..."
               aria-label="Search commands"
               className="
@@ -2132,7 +2233,8 @@ export default function CommandLibrary({
                 bg-[#0d1117]
                 border border-[#21262d]
                 text-[#e6edf3]
-                text-sm rounded-lg
+                text-sm
+                rounded-lg
                 pl-9 pr-3 py-2
                 placeholder-[#3d444d]
                 focus:outline-none
@@ -2142,17 +2244,18 @@ export default function CommandLibrary({
             />
           </div>
 
-          <div className="flex gap-1.5 flex-wrap">
+          <div
+            className="
+              flex gap-1.5
+              flex-wrap
+            "
+          >
             {allTags.map((tag) => (
               <button
                 type="button"
                 key={tag}
-                onClick={() =>
-                  setFilterTag(tag)
-                }
-                aria-pressed={
-                  filterTag === tag
-                }
+                onClick={() => setFilterTag(tag)}
+                aria-pressed={filterTag === tag}
                 className={`
                   px-3 py-1.5
                   rounded-lg
@@ -2174,76 +2277,63 @@ export default function CommandLibrary({
         </div>
 
         {/* CONTENT */}
-
         {loading && groups.length === 0 ? (
           <div
-            className="flex flex-col items-center justify-center py-20 gap-3"
+            className="
+              flex flex-col
+              items-center
+              justify-center
+              py-20
+              gap-3
+            "
             role="status"
             aria-live="polite"
           >
             <SpinnerIcon size={22} />
 
-            <p className="text-[#484f58] text-sm">
+            <p
+              className="
+                text-[#484f58]
+                text-sm
+              "
+            >
               Loading commands...
             </p>
           </div>
         ) : groups.length > 0 ? (
           <div className="space-y-3">
-            {groups.map((item) => (
-              <CommandCard
-                key={
-                  item?._id ||
-                  item?.id ||
-                  createClientId()
-                }
-                item={item}
-                onDelete={handleDelete}
-                onEdit={openEdit}
-              />
-            ))}
+            {groups.map((item, index) => {
+              const itemKey =
+                item?._id || item?.id || item?.clientId || `group-${index}`;
+
+              const itemId = item?._id || item?.id || null;
+
+              return (
+                <CommandCard
+                  key={itemKey}
+                  item={item}
+                  onDelete={handleDelete}
+                  onEdit={openEdit}
+                  deleting={deletingId === itemId}
+                />
+              );
+            })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-12 h-12 bg-[#0d1117] border border-[#21262d] rounded-xl flex items-center justify-center mb-3">
-              <SearchIcon size={20} />
-            </div>
-
-            <p className="text-[#484f58] text-sm">
-              {search ||
-              filterTag !== "all"
-                ? "No groups match your filter."
-                : "No commands yet. Add your first group!"}
-            </p>
-
-            {search ||
-            filterTag !== "all" ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setFilterTag("all");
-                }}
-                className="mt-2 text-[#58a6ff] text-xs hover:underline"
-              >
-                Clear filters
-              </button>
-            ) : (
-              !isLoggedIn && (
-                <button
-                  type="button"
-                  onClick={redirectToLogin}
-                  className="mt-3 text-[#58a6ff] text-xs hover:underline"
-                >
-                  Login to add your first group
-                </button>
-              )
-            )}
-          </div>
+          <EmptyState
+            hasFilters={hasFilters}
+            isLoggedIn={isLoggedIn}
+            onClearFilters={() => {
+              setSearch("");
+              setFilterTag("all");
+            }}
+            onLogin={redirectToLogin}
+            onAdd={openAdd}
+          />
         )}
       </main>
 
       {/* MODAL */}
-
       {showModal && (
         <CommandModal
           editItem={editItem}
@@ -2254,10 +2344,23 @@ export default function CommandLibrary({
       )}
 
       {/* DELETE STATUS */}
-
       {deletingId && (
         <div
-          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 bg-[#161b22] border border-[#30363d] rounded-lg text-xs text-[#8b949e] shadow-xl"
+          className="
+            fixed
+            bottom-4
+            right-4
+            z-50
+            flex items-center
+            gap-2
+            px-3 py-2
+            bg-[#161b22]
+            border border-[#30363d]
+            rounded-lg
+            text-xs
+            text-[#8b949e]
+            shadow-xl
+          "
           role="status"
           aria-live="polite"
         >

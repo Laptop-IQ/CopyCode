@@ -3,7 +3,6 @@ import cors from "cors";
 import "dotenv/config";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import morgan from "morgan";
 import compression from "compression";
 import hpp from "hpp";
 
@@ -20,38 +19,26 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 4000;
 const NODE_ENV = process.env.NODE_ENV || "development";
+const IS_PRODUCTION = NODE_ENV === "production";
 
 // ======================================================
 // ENVIRONMENT VALIDATION
 // ======================================================
 
-const requiredProductionEnv = ["MONGODB_URI", "JWT_SECRET"];
+const requiredProductionEnv = ["MONGODB_URI", "JWT_SECRET", "CLIENT_URL"];
 
-if (NODE_ENV === "production") {
+if (IS_PRODUCTION) {
   const missingVariables = requiredProductionEnv.filter(
-    (variable) => !process.env[variable],
+    (variable) => !process.env[variable]?.trim(),
   );
 
   if (missingVariables.length > 0) {
-    console.error("");
-    console.error("==========================================");
-    console.error("❌ MISSING ENVIRONMENT VARIABLES");
-    console.error("==========================================");
-    console.error(missingVariables.join(", "));
-    console.error("==========================================");
-    console.error("");
+    console.error(
+      `[STARTUP ERROR] Missing environment variables: ${missingVariables.join(", ")}`,
+    );
 
     process.exit(1);
   }
-}
-
-// ======================================================
-// TRUST PROXY
-// Required for Render / Railway / reverse proxies
-// ======================================================
-
-if (NODE_ENV === "production") {
-  app.set("trust proxy", 1);
 }
 
 // ======================================================
@@ -61,17 +48,21 @@ if (NODE_ENV === "production") {
 const normalizeOrigin = (origin) => {
   if (!origin) return "";
 
-  return origin.trim().replace(/\/$/, "");
+  return origin.trim().replace(/\/+$/, "");
 };
 
-const allowedOrigins = ["http://localhost:5173", process.env.CLIENT_URL]
+const allowedOrigins = [
+  !IS_PRODUCTION ? "http://localhost:5173" : null,
+  process.env.CLIENT_URL,
+]
   .filter(Boolean)
-  .map(normalizeOrigin);
+  .map(normalizeOrigin)
+  .filter((origin, index, origins) => origins.indexOf(origin) === index);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests without an Origin header.
-    // Examples: Postman, curl, server-to-server requests.
+    // Allow requests without Origin header.
+    // Useful for curl, Postman and server-to-server calls.
     if (!origin) {
       return callback(null, true);
     }
@@ -81,8 +72,6 @@ const corsOptions = {
     if (allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
-
-    console.warn(`❌ CORS blocked: ${origin}`);
 
     return callback(new Error("CORS blocked"));
   },
@@ -99,20 +88,26 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // ======================================================
-// SECURITY
+// TRUST PROXY
 // ======================================================
 
-if (NODE_ENV === "production") {
-  app.use(
-    helmet({
-      crossOriginResourcePolicy: {
-        policy: "cross-origin",
-      },
-    }),
-  );
-
-  app.use(hpp());
+if (IS_PRODUCTION) {
+  app.set("trust proxy", 1);
 }
+
+// ======================================================
+// SECURITY HEADERS
+// ======================================================
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: "cross-origin",
+    },
+  }),
+);
+
+app.use(hpp());
 
 // ======================================================
 // COMPRESSION
@@ -131,15 +126,21 @@ app.use(
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
 
-  max: NODE_ENV === "production" ? 200 : 1000,
+  max: IS_PRODUCTION ? 200 : 1000,
 
   standardHeaders: "draft-7",
-
   legacyHeaders: false,
 
   message: {
     success: false,
     message: "Too many requests. Please try again later.",
+  },
+
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: "Too many requests. Please try again later.",
+    });
   },
 });
 
@@ -152,15 +153,21 @@ app.use(globalLimiter);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
 
-  max: NODE_ENV === "production" ? 30 : 100,
+  max: IS_PRODUCTION ? 30 : 100,
 
   standardHeaders: "draft-7",
-
   legacyHeaders: false,
 
   message: {
     success: false,
     message: "Too many authentication attempts. Please try again later.",
+  },
+
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: "Too many authentication attempts. Please try again later.",
+    });
   },
 });
 
@@ -168,14 +175,16 @@ app.use("/api/user/login", authLimiter);
 app.use("/api/user/register", authLimiter);
 app.use("/api/user/forgot-password", authLimiter);
 app.use("/api/user/reset-password", authLimiter);
+app.use("/api/user/verify-forgot-otp", authLimiter);
 
 // ======================================================
-// BODY PARSER
+// BODY PARSERS
 // ======================================================
 
 app.use(
   express.json({
     limit: "20kb",
+    strict: true,
   }),
 );
 
@@ -193,23 +202,23 @@ app.use(
 app.use(
   "/uploads",
   express.static("uploads", {
-    maxAge: NODE_ENV === "production" ? "7d" : 0,
+    maxAge: IS_PRODUCTION ? "7d" : 0,
+
+    etag: true,
+
+    lastModified: true,
 
     setHeaders: (res) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
+
+      if (IS_PRODUCTION) {
+        res.setHeader("Cache-Control", "public, max-age=604800");
+      } else {
+        res.setHeader("Cache-Control", "no-cache");
+      }
     },
   }),
 );
-
-// ======================================================
-// LOGGING
-// ======================================================
-
-if (NODE_ENV === "development") {
-  app.use(morgan("dev"));
-} else {
-  app.use(morgan("combined"));
-}
 
 // ======================================================
 // HEALTH CHECK
@@ -219,8 +228,6 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     success: true,
     message: "API is healthy",
-    environment: NODE_ENV,
-    timestamp: new Date().toISOString(),
   });
 });
 
@@ -229,9 +236,7 @@ app.get("/health", (req, res) => {
 // ======================================================
 
 app.use("/api/commands", commandRoutes);
-
 app.use("/api/contact", contactRoutes);
-
 app.use("/api/user", userRouter);
 
 // ======================================================
@@ -241,7 +246,7 @@ app.use("/api/user", userRouter);
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Expense Tracker API is running 🚀",
+    message: "Expense Tracker API is running",
   });
 });
 
@@ -252,7 +257,7 @@ app.get("/", (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
+    message: "Route not found",
   });
 });
 
@@ -261,13 +266,14 @@ app.use((req, res) => {
 // ======================================================
 
 app.use((err, req, res, next) => {
-  console.error("❌ ERROR:", err);
+  // Only real errors are logged.
+  console.error(`[ERROR] ${req.method} ${req.originalUrl}`, err);
 
   // ----------------------------------------------------
   // CORS ERROR
   // ----------------------------------------------------
 
-  if (err.message === "CORS blocked") {
+  if (err?.message === "CORS blocked") {
     return res.status(403).json({
       success: false,
       message: "CORS policy blocked this request.",
@@ -275,7 +281,7 @@ app.use((err, req, res, next) => {
   }
 
   // ----------------------------------------------------
-  // JSON PARSING ERROR
+  // INVALID JSON
   // ----------------------------------------------------
 
   if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
@@ -286,20 +292,47 @@ app.use((err, req, res, next) => {
   }
 
   // ----------------------------------------------------
-  // GENERAL ERROR
+  // PAYLOAD TOO LARGE
   // ----------------------------------------------------
 
-  const statusCode = err.status || err.statusCode || 500;
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      message: "Request payload is too large.",
+    });
+  }
 
-  return res.status(statusCode).json({
+  // ----------------------------------------------------
+  // INVALID REQUEST BODY
+  // ----------------------------------------------------
+
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid request payload.",
+    });
+  }
+
+  // ----------------------------------------------------
+  // STATUS CODE
+  // ----------------------------------------------------
+
+  const statusCode = Number(err?.status) || Number(err?.statusCode) || 500;
+
+  const safeStatusCode =
+    statusCode >= 400 && statusCode < 600 ? statusCode : 500;
+
+  // ----------------------------------------------------
+  // RESPONSE
+  // ----------------------------------------------------
+
+  return res.status(safeStatusCode).json({
     success: false,
 
     message:
-      NODE_ENV === "development"
-        ? err.message
-        : statusCode === 500
-          ? "Internal Server Error"
-          : err.message,
+      IS_PRODUCTION && safeStatusCode >= 500
+        ? "Internal Server Error"
+        : err?.message || "Something went wrong.",
   });
 });
 
@@ -307,85 +340,39 @@ app.use((err, req, res, next) => {
 // SERVER
 // ======================================================
 
-let server;
-
-// ======================================================
-// START APPLICATION
-// ======================================================
-
-const startServer = async () => {
-  try {
-    console.log("");
-    console.log("==========================================");
-    console.log("🚀 Expense Tracker API");
-    console.log("==========================================");
-    console.log(`🌍 Environment : ${NODE_ENV}`);
-    console.log(`🚪 Port        : ${PORT}`);
-    console.log(`🌐 Origins     : ${allowedOrigins.join(", ")}`);
-    console.log("==========================================");
-    console.log("");
-
-    // --------------------------------------------------
-    // DATABASE
-    // --------------------------------------------------
-
-    console.log("🔄 Connecting to MongoDB...");
-
-    await connectDB();
-
-    console.log("✅ Database connected successfully");
-
-    // --------------------------------------------------
-    // START HTTP SERVER
-    // --------------------------------------------------
-
-    server = app.listen(PORT, () => {
-      console.log("");
-      console.log("==========================================");
-      console.log("✅ SERVER STARTED");
-      console.log("==========================================");
-      console.log(`🚀 Port        : ${PORT}`);
-      console.log(`🌍 Environment : ${NODE_ENV}`);
-      console.log("==========================================");
-      console.log("");
-    });
-  } catch (error) {
-    console.error("");
-    console.error("==========================================");
-    console.error("❌ SERVER STARTUP FAILED");
-    console.error("==========================================");
-    console.error(error?.message || error);
-    console.error("==========================================");
-    console.error("");
-
-    process.exit(1);
-  }
-};
+let server = null;
+let isShuttingDown = false;
 
 // ======================================================
 // GRACEFUL SHUTDOWN
 // ======================================================
 
-const shutdown = (signal) => {
-  console.log("");
-  console.log(`🛑 ${signal} received.`);
+const shutdown = (signal, error = null) => {
+  if (isShuttingDown) {
+    return;
+  }
 
+  isShuttingDown = true;
+
+  if (error) {
+    console.error(`[${signal}]`, error);
+  }
+
+  // Server did not start.
   if (!server) {
-    console.log("⚠️ Server was not running.");
-    process.exit(0);
+    process.exit(error ? 1 : 0);
   }
 
   server.close(() => {
-    console.log("✅ HTTP server closed.");
-    process.exit(0);
+    process.exit(error ? 1 : 0);
   });
 
-  // Force shutdown after 10 seconds
+  // Force shutdown after 10 seconds.
   setTimeout(() => {
-    console.error("❌ Forced shutdown after 10 seconds.");
+    console.error("[SHUTDOWN] Forced shutdown after 10 seconds.");
 
     process.exit(1);
-  }, 10000).unref();
+  }, 10_000).unref();
 };
 
 // ======================================================
@@ -405,11 +392,9 @@ process.on("SIGTERM", () => {
 // ======================================================
 
 process.on("uncaughtException", (error) => {
-  console.error("");
-  console.error("❌ UNCAUGHT EXCEPTION:");
-  console.error(error);
+  console.error("[UNCAUGHT EXCEPTION]", error);
 
-  shutdown("uncaughtException");
+  shutdown("uncaughtException", error);
 });
 
 // ======================================================
@@ -417,12 +402,46 @@ process.on("uncaughtException", (error) => {
 // ======================================================
 
 process.on("unhandledRejection", (reason) => {
-  console.error("");
-  console.error("❌ UNHANDLED REJECTION:");
-  console.error(reason);
+  console.error("[UNHANDLED REJECTION]", reason);
 
-  shutdown("unhandledRejection");
+  shutdown("unhandledRejection", reason);
 });
+
+// ======================================================
+// START SERVER
+// ======================================================
+
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    server = app.listen(PORT, "0.0.0.0");
+
+    // --------------------------------------------------
+    // HTTP TIMEOUTS
+    // --------------------------------------------------
+
+    server.keepAliveTimeout = 65_000;
+
+    server.headersTimeout = 66_000;
+
+    server.requestTimeout = 120_000;
+
+    // --------------------------------------------------
+    // SERVER ERROR
+    // --------------------------------------------------
+
+    server.on("error", (error) => {
+      console.error("[SERVER ERROR]", error);
+
+      shutdown("server error", error);
+    });
+  } catch (error) {
+    console.error("[STARTUP ERROR]", error);
+
+    process.exit(1);
+  }
+};
 
 // ======================================================
 // START
