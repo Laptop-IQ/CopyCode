@@ -1,18 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import {
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Lock,
-  Mail,
-} from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { AuthShell, Alert, TextField, PasswordField, OtpField, ResendRow, SubmitButton, TextLink } from "../components/ui/Auth";
+import { useNavigate } from "react-router-dom";
 
 /* =========================================================
    API CONFIGURATION
@@ -588,978 +577,113 @@ const ForgotPassword = () => {
   ======================================================= */
 
   return (
-    <main
-      className="
-        relative
-        flex
-        min-h-[100dvh]
-        w-full
-        items-center
-        justify-center
-        overflow-hidden
-        bg-gradient-to-br
-        from-[#f8f7ff]
-        via-white
-        to-[#f3f0ff]
-        px-4
-        py-6
-        sm:px-6
-        sm:py-8
-      "
+    <AuthShell
+      icon={step === 1 ? "key-2" : "lock-password"}
+      title={step === 1 ? "Reset your password" : "Choose a new password"}
+      subtitle={
+        step === 1 ? (
+          "Enter your email and we’ll send you a verification code."
+        ) : (
+          <>
+            Enter the code sent to{" "}
+            <strong className="break-all font-medium text-ink">{email}</strong>{" "}
+            and set a new password.
+          </>
+        )
+      }
+      onBack={handleBack}
+      backLabel={step === 1 ? "Back" : "Use a different email"}
+      backDisabled={isLoading || isResending}
+      footer={
+        step === 1 ? (
+          <>
+            Remember your password? <TextLink to="/login">Log in</TextLink>
+          </>
+        ) : null
+      }
     >
-      {/* =====================================================
-          BACKGROUND GLOW
-      ====================================================== */}
+      {message && <Alert tone="success">{message}</Alert>}
 
-      <div
-        aria-hidden="true"
-        className="
-          pointer-events-none
-          absolute
-          -right-28
-          -top-28
-          h-72
-          w-72
-          rounded-full
-          bg-purple-300/20
-          blur-3xl
-          sm:-right-36
-          sm:-top-36
-          sm:h-96
-          sm:w-96
-        "
-      />
+      {error && <Alert>{error}</Alert>}
 
-      <div
-        aria-hidden="true"
-        className="
-          pointer-events-none
-          absolute
-          -bottom-28
-          -left-28
-          h-72
-          w-72
-          rounded-full
-          bg-blue-300/15
-          blur-3xl
-          sm:-bottom-36
-          sm:-left-36
-          sm:h-96
-          sm:w-96
-        "
-      />
-
-      {/* =====================================================
-          CARD
-      ====================================================== */}
-
-      <section className="relative w-full max-w-[410px]">
-        {/* Gradient border */}
-
-        <div
-          aria-hidden="true"
-          className="
-            pointer-events-none
-            absolute
-            -inset-[1px]
-            rounded-[25px]
-            bg-gradient-to-r
-            from-[#7c3aed]
-            via-[#c026d3]
-            to-[#3b82f6]
-            opacity-75
-          "
-        />
-
-        <div
-          className="
-            relative
-            w-full
-            overflow-hidden
-            rounded-[24px]
-            border
-            border-white
-            bg-white
-            px-6
-            py-7
-            shadow-[0_20px_55px_rgba(76,29,149,0.14)]
-            sm:px-9
-            sm:py-8
-          "
-        >
-          {/* =================================================
-              INNER GLOW
-          ================================================== */}
-
-          <div
-            aria-hidden="true"
-            className="
-              pointer-events-none
-              absolute
-              -right-20
-              -top-20
-              h-44
-              w-44
-              rounded-full
-              bg-purple-200/15
-              blur-3xl
-            "
+      {step === 1 && (
+        <form onSubmit={handleSendOTP} noValidate className="space-y-4">
+          <TextField
+            id="forgot-email"
+            name="email"
+            label="Email"
+            icon="mail"
+            type="email"
+            inputMode="email"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setError("");
+              setMessage("");
+            }}
+            placeholder="you@example.com"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={254}
+            required
+            disabled={isLoading}
           />
 
-          {/* =================================================
-              DOT PATTERN
-          ================================================== */}
+          <SubmitButton loading={isLoading} loadingLabel="Sending code" disabled={isLoading}>
+            Send code
+          </SubmitButton>
+        </form>
+      )}
 
-          <div
-            aria-hidden="true"
-            className="
-              pointer-events-none
-              absolute
-              right-5
-              top-5
-              z-10
-              grid
-              grid-cols-5
-              gap-[4px]
-              opacity-25
-            "
-          >
-            {Array.from({
-              length: 25,
-            }).map((_, index) => (
-              <span
-                key={index}
-                className="
-                  block
-                  h-[2px]
-                  w-[2px]
-                  rounded-full
-                  bg-[#7c3aed]
-                "
-              />
-            ))}
+      {step === 2 && (
+        <form onSubmit={handleVerifyOTP} noValidate className="space-y-5">
+          <div className="space-y-3">
+            <OtpField
+              otp={otp}
+              disabled={isLoading}
+              registerInput={(element, index) => {
+                otpInputRefs.current[index] = element;
+              }}
+              onChange={handleOtpChange}
+              onKeyDown={handleOtpKeyDown}
+              onPaste={handleOtpPaste}
+            />
+
+            <ResendRow
+              timer={resendTimer}
+              isResending={isResending}
+              disabled={isLoading}
+              onResend={handleResendOTP}
+            />
           </div>
 
-          {/* =================================================
-              HEADER
-          ================================================== */}
+          <PasswordField
+            id="new-password"
+            name="newPassword"
+            label="New password"
+            show={showPassword}
+            onToggle={() => setShowPassword((previous) => !previous)}
+            value={newPassword}
+            onChange={(event) => {
+              setNewPassword(event.target.value);
+              setError("");
+            }}
+            placeholder="Enter a new password"
+            autoComplete="new-password"
+            maxLength={128}
+            required
+            disabled={isLoading}
+            hint="At least 6 characters."
+          />
 
-          <header
-            className="
-              relative
-              z-20
-              mb-7
-              text-center
-            "
-          >
-            {/* Back */}
-
-            <button
-              type="button"
-              onClick={handleBack}
-              disabled={isLoading || isResending}
-              aria-label="Go back"
-              className="
-                absolute
-                left-0
-                top-0
-                flex
-                h-8
-                w-8
-                items-center
-                justify-center
-                rounded-lg
-                text-gray-400
-                transition-all
-                duration-200
-                hover:bg-purple-50
-                hover:text-purple-600
-                focus:outline-none
-                focus:ring-2
-                focus:ring-purple-500/30
-                disabled:cursor-not-allowed
-                disabled:opacity-50
-              "
-            >
-              <ArrowLeft size={17} aria-hidden="true" />
-            </button>
-
-            {/* Icon */}
-
-            <div
-              className="
-                mx-auto
-                mb-3
-                flex
-                h-12
-                w-12
-                items-center
-                justify-center
-                rounded-[14px]
-                bg-gradient-to-br
-                from-[#7c3aed]
-                to-[#3b82f6]
-                shadow-lg
-                shadow-purple-500/20
-              "
-            >
-              {step === 1 ? (
-                <KeyRound size={24} className="text-white" aria-hidden="true" />
-              ) : (
-                <Lock size={23} className="text-white" aria-hidden="true" />
-              )}
-            </div>
-
-            {/* Title */}
-
-            <h1
-              className="
-                whitespace-nowrap
-                px-7
-                text-[27px]
-                font-extrabold
-                leading-tight
-                tracking-[-0.03em]
-                text-transparent
-                bg-gradient-to-r
-                from-[#7c3aed]
-                via-[#c026d3]
-                to-[#3b82f6]
-                bg-clip-text
-                sm:text-[30px]
-              "
-            >
-              {step === 1 ? "Forgot Password" : "Reset Password"}
-            </h1>
-
-            <p
-              className="
-                mx-auto
-                mt-2
-                max-w-[310px]
-                px-2
-                text-[12px]
-                leading-5
-                text-gray-500
-                sm:text-[13px]
-              "
-            >
-              {step === 1
-                ? "Enter your email to receive a verification code"
-                : "Enter the OTP and choose a new password"}
-            </p>
-
-            {/* Underline */}
-
-            <div
-              aria-hidden="true"
-              className="
-                mx-auto
-                mt-3
-                h-[3px]
-                w-12
-                rounded-full
-                bg-gradient-to-r
-                from-[#7c3aed]
-                to-[#3b82f6]
-              "
-            />
-          </header>
-
-          {/* =================================================
-              SUCCESS MESSAGE
-          ================================================== */}
-
-          {message && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="
-                relative
-                z-20
-                mb-5
-                flex
-                w-full
-                min-w-0
-                items-start
-                gap-2.5
-                rounded-lg
-                border
-                border-green-200
-                bg-green-50
-                px-3
-                py-2.5
-                text-xs
-                text-green-600
-              "
-            >
-              <CheckCircle2
-                size={17}
-                className="
-                  mt-0.5
-                  shrink-0
-                  text-green-500
-                "
-                aria-hidden="true"
-              />
-
-              <span className="min-w-0 break-words leading-5">{message}</span>
-            </div>
-          )}
-
-          {/* =================================================
-              ERROR MESSAGE
-          ================================================== */}
-
-          {error && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="
-                relative
-                z-20
-                mb-5
-                flex
-                w-full
-                min-w-0
-                items-start
-                gap-2.5
-                rounded-lg
-                border
-                border-red-200
-                bg-red-50
-                px-3
-                py-2.5
-                text-xs
-                text-red-600
-              "
-            >
-              <AlertCircle
-                size={17}
-                className="
-                  mt-0.5
-                  shrink-0
-                  text-red-500
-                "
-                aria-hidden="true"
-              />
-
-              <span className="min-w-0 break-words leading-5">{error}</span>
-            </div>
-          )}
-
-          {/* =================================================
-              STEP 1 — EMAIL
-          ================================================== */}
-
-          {step === 1 && (
-            <form
-              onSubmit={handleSendOTP}
-              noValidate
-              className="
-                relative
-                z-20
-                w-full
-              "
-            >
-              <div className="mb-5 w-full">
-                <label
-                  htmlFor="forgot-email"
-                  className="
-                    mb-2
-                    block
-                    text-[13px]
-                    font-semibold
-                    text-gray-700
-                  "
-                >
-                  Email Address
-                </label>
-
-                <div className="group relative w-full">
-                  <Mail
-                    size={18}
-                    className="
-                      pointer-events-none
-                      absolute
-                      left-3.5
-                      top-1/2
-                      z-10
-                      -translate-y-1/2
-                      text-gray-400
-                      transition-colors
-                      group-focus-within:text-purple-500
-                    "
-                    aria-hidden="true"
-                  />
-
-                  <input
-                    id="forgot-email"
-                    name="email"
-                    type="email"
-                    inputMode="email"
-                    value={email}
-                    onChange={(event) => {
-                      setEmail(event.target.value);
-                      setError("");
-                      setMessage("");
-                    }}
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    maxLength={254}
-                    required
-                    disabled={isLoading}
-                    className="
-                      box-border
-                      block
-                      h-[48px]
-                      w-full
-                      min-w-0
-                      rounded-[10px]
-                      border
-                      border-gray-200
-                      bg-white
-                      px-10
-                      pr-3
-                      text-[13px]
-                      text-gray-800
-                      outline-none
-                      transition-all
-                      duration-200
-                      placeholder:text-gray-400
-                      hover:border-purple-200
-                      focus:border-purple-500
-                      focus:ring-4
-                      focus:ring-purple-500/10
-                      disabled:cursor-not-allowed
-                      disabled:bg-gray-50
-                      disabled:opacity-70
-                    "
-                  />
-                </div>
-              </div>
-
-              {/* Send OTP */}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="
-                  group
-                  relative
-                  flex
-                  h-[48px]
-                  w-full
-                  items-center
-                  justify-center
-                  gap-2
-                  overflow-hidden
-                  rounded-[10px]
-                  bg-gradient-to-r
-                  from-[#7c3aed]
-                  via-[#c026d3]
-                  to-[#3b82f6]
-                  px-4
-                  text-[13px]
-                  font-bold
-                  text-white
-                  shadow-md
-                  shadow-purple-500/20
-                  transition-all
-                  duration-300
-                  hover:-translate-y-[1px]
-                  hover:shadow-lg
-                  hover:shadow-purple-500/25
-                  focus:outline-none
-                  focus:ring-4
-                  focus:ring-purple-500/20
-                  disabled:cursor-not-allowed
-                  disabled:translate-y-0
-                  disabled:opacity-60
-                "
-              >
-                <span
-                  aria-hidden="true"
-                  className="
-                    absolute
-                    inset-0
-                    -translate-x-full
-                    bg-gradient-to-r
-                    from-transparent
-                    via-white/20
-                    to-transparent
-                    transition-transform
-                    duration-700
-                    group-hover:translate-x-full
-                  "
-                />
-
-                {isLoading ? (
-                  <>
-                    <Loader2
-                      size={17}
-                      className="
-                        relative
-                        z-10
-                        animate-spin
-                      "
-                      aria-hidden="true"
-                    />
-
-                    <span className="relative z-10">Sending OTP...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="relative z-10">Send OTP</span>
-
-                    <ArrowRight
-                      size={17}
-                      className="
-                        relative
-                        z-10
-                        transition-transform
-                        duration-300
-                        group-hover:translate-x-1
-                      "
-                      aria-hidden="true"
-                    />
-                  </>
-                )}
-              </button>
-
-              {/* Login */}
-
-              <div className="mt-5 text-center">
-                <p className="text-xs text-gray-500">
-                  Remember your password?{" "}
-                  <Link
-                    to="/login"
-                    className="
-                      font-bold
-                      text-purple-600
-                      hover:text-blue-600
-                      hover:underline
-                    "
-                  >
-                    Sign in
-                  </Link>
-                </p>
-              </div>
-            </form>
-          )}
-
-          {/* =================================================
-              STEP 2 — OTP + NEW PASSWORD
-          ================================================== */}
-
-          {step === 2 && (
-            <form
-              onSubmit={handleVerifyOTP}
-              noValidate
-              className="
-                relative
-                z-20
-                w-full
-              "
-            >
-              {/* Email info */}
-
-              <div
-                className="
-                  mb-5
-                  flex
-                  w-full
-                  min-w-0
-                  items-center
-                  justify-center
-                  gap-2
-                  rounded-xl
-                  border
-                  border-purple-100
-                  bg-purple-50/60
-                  px-3
-                  py-3
-                "
-              >
-                <Mail
-                  size={16}
-                  className="
-                    shrink-0
-                    text-purple-500
-                  "
-                  aria-hidden="true"
-                />
-
-                <p
-                  className="
-                    min-w-0
-                    truncate
-                    text-center
-                    text-[11px]
-                    text-gray-600
-                  "
-                  title={email}
-                >
-                  Code sent to{" "}
-                  <strong className="font-semibold text-gray-800">
-                    {email}
-                  </strong>
-                </p>
-              </div>
-
-              {/* OTP Label */}
-
-              <label
-                className="
-                  mb-3
-                  block
-                  text-center
-                  text-[13px]
-                  font-semibold
-                  text-gray-700
-                "
-              >
-                Verification Code
-              </label>
-
-              {/* OTP Boxes */}
-
-              <div
-                className="
-                  mb-5
-                  flex
-                  w-full
-                  items-center
-                  justify-center
-                  gap-1.5
-                  sm:gap-2.5
-                "
-              >
-                {otp.map((digit, index) => (
-                  <input
-                    key={index}
-                    ref={(element) => {
-                      otpInputRefs.current[index] = element;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    autoComplete={index === 0 ? "one-time-code" : "off"}
-                    maxLength={1}
-                    value={digit}
-                    disabled={isLoading}
-                    aria-label={`OTP digit ${index + 1}`}
-                    onChange={(event) => handleOtpChange(event, index)}
-                    onKeyDown={(event) => handleOtpKeyDown(event, index)}
-                    onPaste={(event) => handleOtpPaste(event, index)}
-                    className="
-                        box-border
-                        h-[46px]
-                        w-[40px]
-                        min-w-0
-                        rounded-[10px]
-                        border
-                        border-gray-200
-                        bg-white
-                        text-center
-                        text-[18px]
-                        font-bold
-                        text-gray-800
-                        outline-none
-                        transition-all
-                        duration-200
-                        hover:border-purple-200
-                        focus:border-purple-500
-                        focus:ring-4
-                        focus:ring-purple-500/10
-                        disabled:cursor-not-allowed
-                        disabled:bg-gray-50
-                        disabled:opacity-60
-                        sm:h-[50px]
-                        sm:w-[44px]
-                      "
-                  />
-                ))}
-              </div>
-
-              {/* Resend */}
-
-              <div
-                className="
-                  mb-5
-                  flex
-                  flex-wrap
-                  items-center
-                  justify-center
-                  gap-1.5
-                  text-center
-                "
-              >
-                <span className="text-[11px] text-gray-500">
-                  Didn't receive the code?
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleResendOTP}
-                  disabled={resendTimer > 0 || isResending || isLoading}
-                  className="
-                    rounded
-                    text-[11px]
-                    font-bold
-                    text-purple-600
-                    transition-colors
-                    hover:text-blue-600
-                    hover:underline
-                    focus:outline-none
-                    disabled:cursor-not-allowed
-                    disabled:text-gray-400
-                    disabled:no-underline
-                  "
-                >
-                  {isResending ? (
-                    <>Sending...</>
-                  ) : resendTimer > 0 ? (
-                    <>Resend in {resendTimer}s</>
-                  ) : (
-                    "Resend OTP"
-                  )}
-                </button>
-              </div>
-
-              {/* New Password */}
-
-              <div className="mb-5 w-full">
-                <label
-                  htmlFor="new-password"
-                  className="
-                    mb-2
-                    block
-                    text-[13px]
-                    font-semibold
-                    text-gray-700
-                  "
-                >
-                  New Password
-                </label>
-
-                <div className="group relative w-full">
-                  <Lock
-                    size={18}
-                    className="
-                      pointer-events-none
-                      absolute
-                      left-3.5
-                      top-1/2
-                      z-10
-                      -translate-y-1/2
-                      text-gray-400
-                      transition-colors
-                      group-focus-within:text-purple-500
-                    "
-                    aria-hidden="true"
-                  />
-
-                  <input
-                    id="new-password"
-                    name="newPassword"
-                    type={showPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(event) => {
-                      setNewPassword(event.target.value);
-                      setError("");
-                    }}
-                    placeholder="Enter new password"
-                    autoComplete="new-password"
-                    maxLength={128}
-                    required
-                    disabled={isLoading}
-                    className="
-                      box-border
-                      block
-                      h-[48px]
-                      w-full
-                      min-w-0
-                      rounded-[10px]
-                      border
-                      border-gray-200
-                      bg-white
-                      px-10
-                      pr-12
-                      text-[13px]
-                      text-gray-800
-                      outline-none
-                      transition-all
-                      duration-200
-                      placeholder:text-gray-400
-                      hover:border-purple-200
-                      focus:border-purple-500
-                      focus:ring-4
-                      focus:ring-purple-500/10
-                      disabled:cursor-not-allowed
-                      disabled:bg-gray-50
-                      disabled:opacity-70
-                    "
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((previous) => !previous)}
-                    disabled={isLoading}
-                    aria-label={
-                      showPassword ? "Hide password" : "Show password"
-                    }
-                    className="
-                      absolute
-                      right-1.5
-                      top-1/2
-                      z-20
-                      flex
-                      h-9
-                      w-9
-                      -translate-y-1/2
-                      items-center
-                      justify-center
-                      rounded-lg
-                      text-gray-400
-                      transition-colors
-                      hover:bg-purple-50
-                      hover:text-purple-600
-                      focus:outline-none
-                      disabled:cursor-not-allowed
-                      disabled:opacity-50
-                    "
-                  >
-                    {showPassword ? (
-                      <EyeOff size={17} aria-hidden="true" />
-                    ) : (
-                      <Eye size={17} aria-hidden="true" />
-                    )}
-                  </button>
-                </div>
-
-                <p className="mt-1.5 text-[10px] text-gray-400">
-                  Minimum 6 characters
-                </p>
-              </div>
-
-              {/* Reset Button */}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="
-                  group
-                  relative
-                  flex
-                  h-[48px]
-                  w-full
-                  items-center
-                  justify-center
-                  gap-2
-                  overflow-hidden
-                  rounded-[10px]
-                  bg-gradient-to-r
-                  from-[#7c3aed]
-                  via-[#c026d3]
-                  to-[#3b82f6]
-                  px-4
-                  text-[13px]
-                  font-bold
-                  text-white
-                  shadow-md
-                  shadow-purple-500/20
-                  transition-all
-                  duration-300
-                  hover:-translate-y-[1px]
-                  hover:shadow-lg
-                  hover:shadow-purple-500/25
-                  focus:outline-none
-                  focus:ring-4
-                  focus:ring-purple-500/20
-                  disabled:cursor-not-allowed
-                  disabled:translate-y-0
-                  disabled:opacity-60
-                "
-              >
-                <span
-                  aria-hidden="true"
-                  className="
-                    absolute
-                    inset-0
-                    -translate-x-full
-                    bg-gradient-to-r
-                    from-transparent
-                    via-white/20
-                    to-transparent
-                    transition-transform
-                    duration-700
-                    group-hover:translate-x-full
-                  "
-                />
-
-                {isLoading ? (
-                  <>
-                    <Loader2
-                      size={17}
-                      className="
-                        relative
-                        z-10
-                        animate-spin
-                      "
-                      aria-hidden="true"
-                    />
-
-                    <span className="relative z-10">Resetting...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="relative z-10">Reset Password</span>
-
-                    <ArrowRight
-                      size={17}
-                      className="
-                        relative
-                        z-10
-                        transition-transform
-                        duration-300
-                        group-hover:translate-x-1
-                      "
-                      aria-hidden="true"
-                    />
-                  </>
-                )}
-              </button>
-
-              {/* Back */}
-
-              <div className="mt-5 text-center">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  disabled={isLoading || isResending}
-                  className="
-                    text-[11px]
-                    font-medium
-                    text-gray-400
-                    transition-colors
-                    hover:text-purple-600
-                    hover:underline
-                    disabled:cursor-not-allowed
-                    disabled:opacity-50
-                  "
-                >
-                  ← Use a different email
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      </section>
-    </main>
+          <SubmitButton loading={isLoading} loadingLabel="Resetting" disabled={isLoading}>
+            Reset password
+          </SubmitButton>
+        </form>
+      )}
+    </AuthShell>
   );
 };
 

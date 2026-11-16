@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
+import Icon from "./ui/Icon";
+import useDialogBehavior from "./ui/useDialogBehavior";
+import Brand from "./ui/Brand";
+import ThemeToggle from "./ui/ThemeToggle";
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE ||
   import.meta.env.VITE_API_BASE_URL ||
@@ -72,16 +77,21 @@ const clearCachedGroups = (user) => {
 
 
 const TAG_COLORS = {
-  git: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  npm: "bg-red-500/15 text-red-400 border-red-500/30",
-  javascript: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
-  typescript: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  react: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-  jsx: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-  tsx: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  css: "bg-pink-500/15 text-pink-400 border-pink-500/30",
-  json: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  git: "#c2410c",
+  npm: "#b91c1c",
+  javascript: "#a16207",
+  typescript: "#1d4ed8",
+  react: "#0e7490",
+  jsx: "#0e7490",
+  tsx: "#1d4ed8",
+  css: "#be185d",
+  json: "#7c5e10",
 };
+
+const TAG_FALLBACK_COLOR = "#6b7280";
+
+const tagColor = (tag) => TAG_COLORS[tag] || TAG_FALLBACK_COLOR;
+
 
 const CODE_LANGUAGES = [
   { value: "bash", label: "Bash / Shell" },
@@ -111,174 +121,17 @@ const ENTRY_TYPES = [
   },
 ];
 
-const CheckIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const CopyIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="9" y="9" width="13" height="13" rx="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-
-const PlusIcon = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-
-const TrashIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    <path d="M10 11v6M14 11v6" />
-    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-  </svg>
-);
-
-const EditIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
-
-const XIcon = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
+const CheckIcon = ({ size = 14 }) => <Icon name="check" size={size} />;
+const CopyIcon = ({ size = 14 }) => <Icon name="file-copy" size={size} />;
+const PlusIcon = ({ size = 16 }) => <Icon name="add" size={size} />;
+const TrashIcon = ({ size = 16 }) => <Icon name="delete-bin" size={size} />;
+const EditIcon = ({ size = 16 }) => <Icon name="edit" size={size} />;
+const XIcon = ({ size = 18 }) => <Icon name="close" size={size} />;
 const SpinnerIcon = ({ size = 16 }) => (
-  <svg
-    className="animate-spin"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden="true"
-  >
-    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-  </svg>
+  <Icon name="loader-4" size={size} spin />
 );
-
-const SearchIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden="true"
-  >
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-
-const LockIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="3" y="11" width="18" height="10" rx="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-);
-
-const RefreshIcon = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <polyline points="23 4 23 10 17 10" />
-    <polyline points="1 20 1 14 7 14" />
-    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
-    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
-  </svg>
-);
+const SearchIcon = ({ size = 16 }) => <Icon name="search" size={size} />;
+const LockIcon = ({ size = 14 }) => <Icon name="lock" size={size} />;
 
 const getStoredToken = () => {
   try {
@@ -494,7 +347,7 @@ function CopyButton({ text, large = false }) {
       }
 
       setCopied(true);
-      toast.success("Code copied!");
+      toast.success("Copied to clipboard");
 
       if (timerRef.current) {
         window.clearTimeout(timerRef.current);
@@ -513,103 +366,66 @@ function CopyButton({ text, large = false }) {
       type="button"
       onClick={handleCopy}
       aria-label={copied ? "Code copied" : "Copy code"}
-      className={`
-        shrink-0 inline-flex items-center gap-1.5
-        ${large ? "px-3 py-1.5 text-xs" : "px-2 py-1 text-[11px]"}
-        rounded-md border transition-all
-        ${
-          copied
-            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-            : "bg-[#21262d] text-[#8b949e] border-[#30363d] hover:bg-[#30363d] hover:text-[#e6edf3]"
-        }
-      `}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md font-medium transition-colors duration-150 ${
+        large ? "h-8 px-2.5 text-[13px]" : "h-7 px-2 text-xs"
+      } ${
+        copied
+          ? "text-code-prompt"
+          : "text-code-muted hover:bg-code-line hover:text-code-strong"
+      }`}
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
-      {copied ? "Copied!" : "Copy"}
+      <span>{copied ? "Copied" : "Copy"}</span>
     </button>
   );
 }
 
 function CommandCard({ item, onDelete, onEdit, deleting }) {
-  const tagClass = TAG_COLORS[item?.tag] || TAG_COLORS.other;
+  const tag = item?.tag || "other";
   const commands = Array.isArray(item?.commands) ? item.commands : [];
   const groupId = item?._id || item?.id || item?.clientId || "unknown";
 
+  const typeLabel =
+    item?.entryType === "component"
+      ? "Full component"
+      : item?.entryType === "multi"
+        ? "Multi-line"
+        : null;
+
   return (
-    <article
-      className="
-        group bg-[#0d1117]
-        border border-[#21262d]
-        rounded-xl overflow-hidden
-        hover:border-[#30363d]
-        transition-all
-      "
-    >
-      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <span
-            className={`
-              text-[10px] font-bold px-2 py-0.5
-              rounded-md uppercase tracking-wider
-              shrink-0 border ${tagClass}
-            `}
-          >
-            {item?.tag || "other"}
-          </span>
-
-          {item?.entryType && (
-            <span
-              className="
-                text-[10px] text-[#8b949e]
-                bg-[#161b22] border border-[#21262d]
-                px-2 py-0.5 rounded-md
-              "
-            >
-              {item.entryType === "component"
-                ? "Full Component"
-                : item.entryType === "multi"
-                  ? "Multi Line"
-                  : "Single Line"}
-            </span>
-          )}
-
-          <h3 className="text-sm font-semibold text-[#e6edf3] truncate">
+    <article className="group rounded-card border border-line bg-surface shadow-card">
+      <header className="flex items-start justify-between gap-3 px-4 pb-3 pt-3.5 sm:px-5">
+        <div className="min-w-0">
+          <h3 className="truncate text-[15px] font-semibold tracking-tight text-ink">
             {item?.title || "Untitled"}
           </h3>
 
-          <span
-            className="
-              shrink-0 text-[10px] text-[#484f58]
-              bg-[#161b22] border border-[#21262d]
-              px-1.5 py-0.5 rounded-full
-            "
-          >
-            {commands.length} cmd
-            {commands.length !== 1 ? "s" : ""}
-          </span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="chip">
+              <span
+                className="size-1.5 rounded-full"
+                style={{ background: tagColor(tag) }}
+                aria-hidden="true"
+              />
+              {tag}
+            </span>
+
+            {typeLabel && (
+              <span className="chip bg-transparent text-muted">{typeLabel}</span>
+            )}
+
+            <span className="text-xs text-muted">
+              {commands.length} {commands.length === 1 ? "block" : "blocks"}
+            </span>
+          </div>
         </div>
 
-        <div
-          className="
-            flex items-center gap-1 ml-2 shrink-0
-            opacity-100 sm:opacity-0
-            sm:group-hover:opacity-100
-            focus-within:opacity-100
-            transition-all
-          "
-        >
+        <div className="card-actions -mr-1.5 flex shrink-0 items-center gap-0.5">
           <button
             type="button"
             onClick={() => onEdit(item)}
             disabled={Boolean(deleting)}
-            className="
-              p-1.5 rounded-md
-              text-[#484f58]
-              hover:text-[#58a6ff]
-              hover:bg-[#161b22]
-              disabled:opacity-40
-              transition-colors
-            "
+            className="icon-btn hover:text-accent"
             title="Edit"
             aria-label={`Edit ${item?.title || "command group"}`}
           >
@@ -620,27 +436,20 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
             type="button"
             onClick={() => onDelete(groupId)}
             disabled={Boolean(deleting)}
-            className="
-              p-1.5 rounded-md
-              text-[#484f58]
-              hover:text-red-400
-              hover:bg-[#161b22]
-              disabled:opacity-40
-              transition-colors
-            "
+            className="icon-btn hover:bg-danger-soft hover:text-danger"
             title="Delete"
             aria-label={`Delete ${item?.title || "command group"}`}
           >
-            {deleting ? <SpinnerIcon size={14} /> : <TrashIcon />}
+            {deleting ? <SpinnerIcon /> : <TrashIcon />}
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="px-3 pb-3 space-y-2">
+      <div className="space-y-2 px-3 pb-3 sm:px-4 sm:pb-4">
         {commands.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-[#484f58]">
-            No code blocks in this group.
-          </div>
+          <p className="rounded-lg border border-dashed border-line-strong px-4 py-5 text-center text-sm text-muted">
+            This group has no code blocks yet.
+          </p>
         ) : (
           commands.map((command, index) => {
             const value = command?.cmd || "";
@@ -650,98 +459,43 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
               item?.entryType === "multi" ||
               item?.entryType === "component";
 
+            const showHeader = isMultiLine || Boolean(command?.label);
+
             const commandKey =
               command?._id || command?.id || `${groupId}-${index}`;
 
             return (
-              <div
-                key={commandKey}
-                className="
-                  bg-[#161b22]
-                  border border-[#21262d]
-                  rounded-lg overflow-hidden
-                "
-              >
-                <div
-                  className="
-                    flex items-center justify-between gap-2
-                    px-3 py-2
-                    border-b border-[#21262d]
-                  "
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="
-                        shrink-0 w-5 h-5 rounded-full
-                        bg-[#21262d] text-[#484f58]
-                        text-[9px] font-bold
-                        flex items-center justify-center
-                      "
-                    >
-                      {index + 1}
+              <div key={commandKey} className="overflow-hidden rounded-lg border border-code-line bg-code">
+                {showHeader && (
+                  <div className="flex items-center justify-between gap-2 border-b border-code-line bg-code-raised/60 py-1 pl-3 pr-1.5">
+                    <span className="truncate font-mono text-xs text-code-muted">
+                      {command?.label || item?.language || "code"}
                     </span>
 
-                    {command?.label ? (
-                      <span className="text-[11px] text-[#8b949e] truncate">
-                        {command.label}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-[#484f58]">
-                        {isMultiLine ? "Code" : "Command"}
-                      </span>
-                    )}
+                    <CopyButton text={value} />
                   </div>
+                )}
 
-                  <CopyButton text={value} />
-                </div>
-
-                <div className="relative">
-                  {isMultiLine ? (
-                    <pre
-                      className="
-                        overflow-x-auto overflow-y-auto
-                        max-h-[500px]
-                        p-4
-                        text-[12px]
-                        leading-6
-                        font-mono
-                        text-[#79c0ff]
-                        whitespace-pre
-                      "
+                {isMultiLine ? (
+                  <pre className="max-h-[480px] overflow-auto whitespace-pre p-4 font-mono text-[12.5px] leading-6 text-code-text">
+                    <code>{value}</code>
+                  </pre>
+                ) : (
+                  <div className="flex items-center gap-2 py-1.5 pl-3 pr-1.5">
+                    <span
+                      className="select-none font-mono text-[13px] text-code-prompt"
+                      aria-hidden="true"
                     >
-                      <code>{value}</code>
-                    </pre>
-                  ) : (
-                    <div
-                      className="
-                        px-3 py-2.5
-                        flex items-center gap-2
-                      "
-                    >
-                      <span
-                        className="
-                          text-[#3fb950]
-                          font-mono text-sm
-                          select-none
-                        "
-                      >
-                        $
-                      </span>
+                      $
+                    </span>
 
-                      <code
-                        className="
-                          text-[12px]
-                          text-[#79c0ff]
-                          font-mono
-                          overflow-x-auto
-                          whitespace-nowrap
-                        "
-                      >
-                        {value}
-                      </code>
-                    </div>
-                  )}
-                </div>
+                    <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap py-1 font-mono text-[12.5px] text-code-text">
+                      {value}
+                    </code>
+
+                    {!showHeader && <CopyButton text={value} />}
+                  </div>
+                )}
               </div>
             );
           })
@@ -760,9 +514,11 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
     }
 
     event.preventDefault();
+
     const textarea = event.currentTarget;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
+
     const newValue =
       textarea.value.substring(0, start) + "  " + textarea.value.substring(end);
 
@@ -778,31 +534,8 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
   };
 
   return (
-    <div
-      className="
-        bg-[#161b22]
-        border border-[#21262d]
-        rounded-xl overflow-hidden
-      "
-    >
-      <div
-        className="
-          flex items-center gap-2
-          px-3 py-2
-          border-b border-[#21262d]
-        "
-      >
-        <span
-          className="
-            shrink-0 w-5 h-5 rounded-full
-            bg-[#21262d] text-[#484f58]
-            text-[10px] font-bold
-            flex items-center justify-center
-          "
-        >
-          {index + 1}
-        </span>
-
+    <div className="overflow-hidden rounded-card border border-code-line bg-code focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-surface">
+      <div className="flex items-center gap-2 border-b border-code-line bg-code-raised/60 py-1 pl-3 pr-1.5">
         <input
           type="text"
           value={item?.label || ""}
@@ -813,35 +546,24 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
             })
           }
           maxLength={100}
+          aria-label={`Label for code block ${index + 1}`}
           placeholder={
             entryType === "component"
-              ? "Component / file name (optional)"
+              ? "Component or file name (optional)"
               : "Label (optional)"
           }
-          className="
-            flex-1 min-w-0
-            bg-transparent
-            text-[#8b949e]
-            text-xs
-            focus:outline-none
-            placeholder-[#3d444d]
-          "
+          className="h-7 min-w-0 flex-1 bg-transparent font-mono text-xs text-code-text outline-none placeholder:text-code-muted/70"
         />
 
         {canRemove && (
           <button
             type="button"
             onClick={onRemove}
-            className="
-              shrink-0 p-1
-              text-[#484f58]
-              hover:text-red-400
-              transition-colors
-            "
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-code-muted transition-colors hover:bg-code-line hover:text-code-strong"
             title="Remove"
             aria-label={`Remove code block ${index + 1}`}
           >
-            <XIcon />
+            <XIcon size={16} />
           </button>
         )}
       </div>
@@ -856,54 +578,26 @@ function CodeInput({ item, index, onChange, onRemove, canRemove, entryType }) {
             })
           }
           onKeyDown={handleKeyDown}
+          aria-label={`Code for block ${index + 1}`}
           placeholder={
             entryType === "single"
               ? "npm install express"
               : entryType === "multi"
                 ? "npm install express\nnpm install mongoose\nnpm run dev"
-                : `import React from "react";
-
-export default function MyComponent() {
-  return (
-    <div>
-      Hello World
-    </div>
-  );
-}`
+                : `import React from "react";\n\nexport default function MyComponent() {\n  return (\n    <div>\n      Hello World\n    </div>\n  );\n}`
           }
           rows={isCode ? 12 : 3}
           maxLength={50000}
           spellCheck={false}
-          className={`
-            block w-full
-            resize-y
-            bg-[#0d1117]
-            text-[#79c0ff]
-            font-mono
-            text-[13px]
-            leading-6
-            px-4 py-3
-            focus:outline-none
-            placeholder-[#3d444d]
-            ${entryType === "single" ? "min-h-[70px]" : "min-h-[180px]"}
-          `}
+          className={`block w-full resize-y bg-transparent px-4 py-3 font-mono text-[13px] leading-6 text-code-text outline-none placeholder:text-code-muted/50 ${
+            entryType === "single" ? "min-h-[72px]" : "min-h-[180px]"
+          }`}
         />
 
         {isCode && (
-          <div className="absolute bottom-2 right-2 pointer-events-none">
-            <span
-              className="
-                text-[9px]
-                text-[#484f58]
-                bg-[#161b22]/90
-                px-2 py-1
-                rounded
-                border border-[#21262d]
-              "
-            >
-              Tab = 2 spaces
-            </span>
-          </div>
+          <span className="pointer-events-none absolute bottom-2 right-3 rounded border border-code-line bg-code-raised/80 px-1.5 py-0.5 font-mono text-[10px] text-code-muted">
+            Tab inserts 2 spaces
+          </span>
         )}
       </div>
     </div>
@@ -1046,18 +740,27 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
     }
   };
 
+  const panelRef = useRef(null);
+
+  useDialogBehavior(panelRef);
+
+  const contentLabel =
+    entryType === "component"
+      ? "Full component code"
+      : entryType === "multi"
+        ? "Lines"
+        : "Command";
+
+  const contentHint =
+    entryType === "component"
+      ? "Paste the complete code."
+      : entryType === "multi"
+        ? "Line breaks are kept as written."
+        : "A single line.";
+
   return (
     <div
-      className="
-        fixed inset-0 z-50
-        flex items-center justify-center
-        p-3 sm:p-5
-        bg-black/80
-        backdrop-blur-sm
-      "
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="command-modal-title"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-scrim p-0 animate-fade sm:items-center sm:p-5"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !loading) {
           onClose();
@@ -1065,48 +768,25 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
       }}
     >
       <div
-        className="
-          w-full max-w-3xl
-          bg-[#0d1117]
-          border border-[#30363d]
-          rounded-2xl
-          shadow-2xl
-          flex flex-col
-          max-h-[94vh]
-        "
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="command-modal-title"
+        className="flex max-h-[94dvh] w-full max-w-3xl animate-pop flex-col rounded-t-modal border border-line bg-surface shadow-pop sm:rounded-modal"
         onKeyDown={handleKeyDown}
       >
         {/* HEADER */}
-        <div
-          className="
-            flex items-center justify-between
-            px-5 py-4
-            border-b border-[#21262d]
-            shrink-0
-          "
-        >
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <h2
               id="command-modal-title"
-              className="
-                text-sm font-semibold
-                text-[#e6edf3]
-              "
+              className="text-base font-semibold tracking-tight text-ink"
             >
-              {isEdit
-                ? "Edit Code / Command Group"
-                : "Add New Code / Command Group"}
+              {isEdit ? "Edit group" : "New group"}
             </h2>
 
-            <p
-              className="
-                text-[11px]
-                text-[#484f58]
-                mt-1
-              "
-            >
-              Single line, multiple lines, ya complete component code save
-              karein.
+            <p className="mt-0.5 text-sm text-muted">
+              Save a single command, a multi-line script, or a full component.
             </p>
           </div>
 
@@ -1114,42 +794,19 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="
-              p-1.5
-              text-[#484f58]
-              hover:text-[#e6edf3]
-              disabled:opacity-40
-            "
-            aria-label="Close modal"
+            className="icon-btn -mr-1.5 -mt-1"
+            aria-label="Close"
           >
             <XIcon />
           </button>
         </div>
 
         {/* BODY */}
-        <div
-          className="
-            p-4 sm:p-5
-            space-y-5
-            overflow-y-auto
-            flex-1
-          "
-        >
+        <div className="flex-1 space-y-5 overflow-y-auto p-5">
           {/* TITLE */}
           <div>
-            <label
-              htmlFor="command-group-title"
-              className="
-                block
-                text-[10px]
-                font-semibold
-                text-[#8b949e]
-                mb-1.5
-                uppercase
-                tracking-widest
-              "
-            >
-              Group Title
+            <label htmlFor="command-group-title" className="label">
+              Title
             </label>
 
             <input
@@ -1158,46 +815,25 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
               type="text"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="e.g. React User Dashboard"
+              placeholder="e.g. React user dashboard"
               maxLength={200}
-              className="
-                w-full
-                bg-[#161b22]
-                border border-[#30363d]
-                text-[#e6edf3]
-                text-sm
-                rounded-lg
-                px-3 py-2.5
-                placeholder-[#3d444d]
-                focus:outline-none
-                focus:border-[#58a6ff]
-              "
+              className="input"
             />
 
-            <div className="flex justify-end mt-1">
-              <span className="text-[9px] text-[#484f58]">
-                {title.length}/200
-              </span>
-            </div>
+            <p className="hint text-right tabular-nums">{title.length}/200</p>
           </div>
 
           {/* ENTRY TYPE */}
           <div>
-            <label
-              className="
-                block
-                text-[10px]
-                font-semibold
-                text-[#8b949e]
-                mb-2
-                uppercase
-                tracking-widest
-              "
-            >
-              Content Type
-            </label>
+            <p className="label" id="command-type-label">
+              Content type
+            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div
+              className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+              role="group"
+              aria-labelledby="command-type-label"
+            >
               {ENTRY_TYPES.map((type) => {
                 const active = entryType === type.value;
 
@@ -1207,26 +843,30 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
                     key={type.value}
                     onClick={() => setEntryType(type.value)}
                     aria-pressed={active}
-                    className={`
-                      text-left p-3
-                      rounded-lg border
-                      transition-all
-                      ${
-                        active
-                          ? "bg-[#1f6feb]/10 border-[#58a6ff] text-[#e6edf3]"
-                          : "bg-[#161b22] border-[#21262d] text-[#8b949e] hover:border-[#30363d]"
-                      }
-                    `}
+                    className={`rounded-control border p-3 text-left transition-colors duration-150 ${
+                      active
+                        ? "border-navy bg-surface ring-1 ring-navy"
+                        : "border-line-strong bg-surface hover:border-faint"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] font-medium text-ink">
                         {type.label}
                       </span>
-                    </div>
 
-                    <p className="text-[10px] text-[#484f58] mt-1">
+                      {active && (
+                        <Icon
+                          name="checkbox-circle"
+                          variant="fill"
+                          size={16}
+                          className="text-navy"
+                        />
+                      )}
+                    </span>
+
+                    <span className="mt-0.5 block text-xs text-muted">
                       {type.description}
-                    </p>
+                    </span>
                   </button>
                 );
               })}
@@ -1234,120 +874,47 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
           </div>
 
           {/* LANGUAGE / CATEGORY */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="command-language"
-                className="
-                  block
-                  text-[10px]
-                  font-semibold
-                  text-[#8b949e]
-                  mb-1.5
-                  uppercase
-                  tracking-widest
-                "
-              >
-                Language
-              </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectField
+              id="command-language"
+              label="Language"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+            >
+              {CODE_LANGUAGES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </SelectField>
 
-              <select
-                id="command-language"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-                className="
-                  w-full
-                  bg-[#161b22]
-                  border border-[#30363d]
-                  text-[#e6edf3]
-                  text-sm
-                  rounded-lg
-                  px-3 py-2.5
-                  focus:outline-none
-                  focus:border-[#58a6ff]
-                "
-              >
-                {CODE_LANGUAGES.map((item) => (
-                  <option
-                    key={item.value}
-                    value={item.value}
-                    className="bg-[#0d1117]"
-                  >
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectField
+              id="command-category"
+              label="Category"
+              value={tag}
+              onChange={(event) => setTag(event.target.value)}
+            >
+              {!(tag in TAG_COLORS) && <option value={tag}>{tag}</option>}
 
-            <div>
-              <label
-                htmlFor="command-category"
-                className="
-                  block
-                  text-[10px]
-                  font-semibold
-                  text-[#8b949e]
-                  mb-1.5
-                  uppercase
-                  tracking-widest
-                "
-              >
-                Category
-              </label>
-
-              <select
-                id="command-category"
-                value={tag}
-                onChange={(event) => setTag(event.target.value)}
-                className="
-                  w-full
-                  bg-[#161b22]
-                  border border-[#30363d]
-                  text-[#e6edf3]
-                  text-sm
-                  rounded-lg
-                  px-3 py-2.5
-                  focus:outline-none
-                  focus:border-[#58a6ff]
-                "
-              >
-                {Object.keys(TAG_COLORS).map((item) => (
-                  <option key={item} value={item} className="bg-[#0d1117]">
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+              {Object.keys(TAG_COLORS).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </SelectField>
           </div>
 
           {/* CODE BLOCKS */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label
-                className="
-                  block
-                  text-[10px]
-                  font-semibold
-                  text-[#8b949e]
-                  uppercase
-                  tracking-widest
-                "
-              >
-                {entryType === "component"
-                  ? "Full Component Code"
-                  : entryType === "multi"
-                    ? "Multiple Lines"
-                    : "Command"}{" "}
-                ({cmds.length})
-              </label>
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <p className="text-[13px] font-medium text-ink">
+                {contentLabel}
+                <span className="ml-1.5 font-normal text-muted tabular-nums">
+                  {cmds.length}
+                </span>
+              </p>
 
-              <span className="text-[10px] text-[#484f58]">
-                {entryType === "component"
-                  ? "Paste complete code here"
-                  : entryType === "multi"
-                    ? "Each line will be preserved"
-                    : "One line"}
-              </span>
+              <p className="text-xs text-muted">{contentHint}</p>
             </div>
 
             <div className="space-y-2">
@@ -1367,57 +934,28 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
             <button
               type="button"
               onClick={addCmd}
-              className="
-                mt-2.5gin to
-                w-full
-                flex items-center
-                justify-center gap-1.5
-                py-2.5
-                border border-dashed
-                border-[#30363d]
-                hover:border-[#58a6ff]
-                hover:text-[#58a6ff]
-                text-[#484f58]
-                text-xs font-medium
-                rounded-lg
-                transition-colors
-              "
+              className="btn btn-ghost mt-2 w-full border-dashed border-line-strong"
             >
-              <PlusIcon size={13} />
+              <PlusIcon size={16} />
               Add another code block
             </button>
           </div>
         </div>
 
         {/* FOOTER */}
-        <div
-          className="
-            flex flex-col
-            sm:flex-row
-            sm:items-center
-            sm:justify-between
-            gap-3
-            px-5 py-4
-            border-t border-[#21262d]
-            shrink-0
-          "
-        >
-          <p className="text-[10px] text-[#484f58]">
-            Tip: Ctrl + Enter / Cmd + Enter to save
+        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
+            <span className="kbd">Ctrl</span>
+            <span className="kbd">Enter</span>
+            to save
           </p>
 
-          <div className="flex items-center justify-end gap-2.5">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="
-                px-4 py-2
-                text-sm
-                text-[#8b949e]
-                hover:text-[#e6edf3]
-                disabled:opacity-40
-              "
+              className="btn btn-secondary"
             >
               Cancel
             </button>
@@ -1426,28 +964,16 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
               type="button"
               onClick={handleSave}
               disabled={!canSave || loading}
-              className="
-                flex items-center gap-2
-                px-4 py-2
-                bg-[#238636]
-                hover:bg-[#2ea043]
-                disabled:opacity-40
-                disabled:cursor-not-allowed
-                text-white
-                text-sm font-medium
-                rounded-lg
-                transition-colors
-              "
+              className="btn btn-primary"
             >
               {loading ? (
                 <SpinnerIcon />
               ) : isEdit ? (
-                <CheckIcon />
+                <CheckIcon size={16} />
               ) : (
-                <PlusIcon size={14} />
+                <PlusIcon size={16} />
               )}
-
-              {loading ? "Saving..." : isEdit ? "Save Changes" : "Add Group"}
+              {loading ? "Saving" : isEdit ? "Save changes" : "Add group"}
             </button>
           </div>
         </div>
@@ -1456,36 +982,111 @@ function CommandModal({ editItem, onClose, onSave, loading }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOGIN BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-
-function LoginButton({ onLogin }) {
+function SelectField({ id, label, value, onChange, children }) {
   return (
-    <button
-      type="button"
-      onClick={onLogin}
-      className="
-        flex items-center gap-1.5
-        px-3 py-1.5
-        bg-[#21262d]
-        hover:bg-[#30363d]
-        border border-[#30363d]
-        text-[#e6edf3]
-        text-sm font-medium
-        rounded-lg
-        transition-colors
-      "
-    >
-      <LockIcon size={13} />
-      Login to Add
-    </button>
+    <div>
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
+
+      <div className="relative">
+        <select
+          id={id}
+          value={value}
+          onChange={onChange}
+          className="input appearance-none pr-9"
+        >
+          {children}
+        </select>
+
+        <Icon
+          name="arrow-down-s"
+          size={18}
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+      </div>
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EMPTY STATE
-// ─────────────────────────────────────────────────────────────────────────────
+function ConfirmDialog({ title, onCancel, onConfirm }) {
+  const panelRef = useRef(null);
+
+  useDialogBehavior(panelRef);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 animate-fade"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-description"
+        className="w-full max-w-sm animate-pop rounded-modal border border-line bg-surface p-5 shadow-pop"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+      >
+        <div className="flex gap-3.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-danger-soft text-danger">
+            <Icon name="delete-bin" size={18} />
+          </span>
+
+          <div className="min-w-0">
+            <h2
+              id="confirm-title"
+              className="text-[15px] font-semibold tracking-tight text-ink"
+            >
+              Delete this group?
+            </h2>
+
+            <p
+              id="confirm-description"
+              className="mt-1 break-words text-sm text-muted"
+            >
+              “{title}” and all of its code blocks will be removed permanently.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            className="btn btn-secondary"
+          >
+            Cancel
+          </button>
+
+          <button type="button" onClick={onConfirm} className="btn btn-danger">
+            Delete group
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardSkeleton() {
+  return (
+    <div className="rounded-card border border-line bg-surface p-4 shadow-card sm:p-5">
+      <div className="h-4 w-48 max-w-full animate-pulse rounded bg-sunken" />
+      <div className="mt-2.5 h-5 w-24 animate-pulse rounded bg-sunken" />
+      <div className="mt-4 h-11 animate-pulse rounded-lg bg-sunken" />
+    </div>
+  );
+}
 
 function EmptyState({
   hasFilters,
@@ -1494,87 +1095,58 @@ function EmptyState({
   onLogin,
   onAdd,
 }) {
-  return (
-    <div
-      className="
-        flex flex-col
-        items-center
-        justify-center
-        py-20
-        text-center
-      "
-    >
-      <div
-        className="
-          w-12 h-12
-          bg-[#0d1117]
-          border border-[#21262d]
-          rounded-xl
-          flex items-center
-          justify-center
-          mb-3
-          text-[#484f58]
-        "
-      >
-        <SearchIcon size={20} />
-      </div>
+  const content = hasFilters
+    ? {
+        icon: "search",
+        title: "No matching groups",
+        text: "Try a different search term or clear the filters.",
+      }
+    : isLoggedIn
+      ? {
+          icon: "terminal-box",
+          title: "No command groups yet",
+          text: "Save the commands you reach for most, then copy them in one click.",
+        }
+      : {
+          icon: "terminal-box",
+          title: "Nothing to show yet",
+          text: "Log in to start building your own command library.",
+        };
 
-      <p className="text-[#484f58] text-sm">
-        {hasFilters
-          ? "No groups match your filter."
-          : "No commands yet. Add your first group!"}
-      </p>
+  return (
+    <div className="flex flex-col items-center rounded-card border border-dashed border-line-strong px-6 py-16 text-center">
+      <span className="grid size-10 place-items-center rounded-lg bg-sunken text-muted">
+        <Icon name={content.icon} size={20} />
+      </span>
+
+      <h2 className="mt-4 text-[15px] font-semibold tracking-tight text-ink">
+        {content.title}
+      </h2>
+
+      <p className="mt-1 max-w-xs text-sm text-muted">{content.text}</p>
 
       {hasFilters ? (
         <button
           type="button"
           onClick={onClearFilters}
-          className="
-            mt-2
-            text-[#58a6ff]
-            text-xs
-            hover:underline
-          "
+          className="btn btn-secondary mt-5"
         >
           Clear filters
         </button>
       ) : isLoggedIn ? (
-        <button
-          type="button"
-          onClick={onAdd}
-          className="
-            mt-3
-            inline-flex items-center
-            gap-1.5
-            text-[#58a6ff]
-            text-xs
-            hover:underline
-          "
-        >
-          <PlusIcon size={12} />
-          Add your first group
+        <button type="button" onClick={onAdd} className="btn btn-primary mt-5">
+          <PlusIcon />
+          New group
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={onLogin}
-          className="
-            mt-3
-            text-[#58a6ff]
-            text-xs
-            hover:underline
-          "
-        >
-          Login to add your first group
+        <button type="button" onClick={onLogin} className="btn btn-primary mt-5">
+          <Icon name="login-box" size={16} />
+          Log in
         </button>
       )}
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function CommandLibrary({ user, token }) {
   const navigate = useNavigate();
@@ -1595,6 +1167,41 @@ export default function CommandLibrary({ user, token }) {
   const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState("");
   const [filterTag, setFilterTag] = useState("all");
+
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const searchRef = useRef(null);
+
+  /* Press "/" to jump to search, unless typing or a dialog is open. */
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      const tagName = target?.tagName;
+
+      if (
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        tagName === "SELECT" ||
+        target?.isContentEditable ||
+        document.querySelector('[aria-modal="true"]')
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+
+    return () => {
+      window.removeEventListener("keydown", handleShortcut);
+    };
+  }, []);
   const mountedRef = useRef(false);
   const fetchAbortRef = useRef(null);
   const requestIdRef = useRef(0);
@@ -1875,20 +1482,25 @@ export default function CommandLibrary({ user, token }) {
   // DELETE
   // ───────────────────────────────────────────────────────────────────────────
 
-  const handleDelete = async (id) => {
+  const handleDelete = (id) => {
+    if (!requireLogin() || !id || deletingId) {
+      return;
+    }
+
+    const group = groups.find((entry) => entry?._id === id || entry?.id === id);
+
+    setPendingDelete({
+      id,
+      title: group?.title || "this group",
+    });
+  };
+
+  const performDelete = async (id) => {
     if (!requireLogin() || !id) {
       return;
     }
 
     if (deletingId) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Delete this command/code group permanently?",
-    );
-
-    if (!confirmed) {
       return;
     }
 
@@ -1997,182 +1609,105 @@ export default function CommandLibrary({ user, token }) {
   // ───────────────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="
-        min-h-screen
-        bg-[#010409]
-        text-[#e6edf3]
-        font-sans
-      "
-    >
-      {/* ─────────────────────────────────────────────────────────────────────
-          NAVBAR
-      ───────────────────────────────────────────────────────────────────── */}
+    <div className="min-h-screen bg-canvas text-ink">
+      {/* Guest header. Signed-in users get the sidebar from Layout instead. */}
+      {!isLoggedIn && (
+        <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+            <Brand />
 
-      <header
-        className="
-          sticky top-0 z-40
-          border-b border-[#21262d]
-          bg-[#010409]/90
-          backdrop-blur-md
-        "
-      >
-        <div
-          className="
-            max-w-5xl mx-auto
-            px-4
-            h-14
-            flex items-center
-            justify-between
-            gap-4
-          "
-        >
-        
-          <div className="flex items-center gap-2">
-            {refreshing && (
-              <div
-                className="
-                  hidden sm:flex
-                  items-center gap-1.5
-                  text-[10px]
-                  text-[#484f58]
-                "
-                role="status"
-                aria-live="polite"
-              >
-                <SpinnerIcon size={12} />
-                Syncing
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <ThemeToggle variant="cycle" />
 
-            {isLoggedIn ? (
               <button
                 type="button"
-                onClick={openAdd}
-                className="
-                  flex items-center
-                  gap-1.5
-                  px-3.5 py-1.5
-                  bg-[#238636]
-                  hover:bg-[#2ea043]
-                  text-white
-                  text-sm font-medium
-                  rounded-lg
-                  transition-colors
-                "
+                onClick={() => navigate("/signup")}
+                className="btn btn-ghost"
               >
-                <PlusIcon size={15} />
-                New Group
+                Sign up
               </button>
-            ) : (
-              <LoginButton onLogin={redirectToLogin} />
-            )}
-          </div>
-        </div>
-      </header>
 
-      {/* ─────────────────────────────────────────────────────────────────────
-          MAIN
-      ───────────────────────────────────────────────────────────────────── */}
+              <button
+                type="button"
+                onClick={redirectToLogin}
+                className="btn btn-primary"
+              >
+                <Icon name="login-box" size={16} />
+                Log in
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
 
       <main
-        className="
-          max-w-5xl
-          mx-auto
-          px-4
-          py-8
-        "
+        id="main"
+        className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8"
       >
         {/* TITLE */}
-        <div className="mb-7">
-          <div
-            className="
-              flex flex-col
-              sm:flex-row
-              sm:items-end
-              sm:justify-between
-              gap-3
-            "
-          >
-            <div>
-              <h1
-                className="
-                  text-2xl
-                  font-bold
-                  tracking-tight
-                "
-              >
-                Command Library
-              </h1>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Command library
+            </h1>
 
-              <p
-                className="
-                  text-sm
-                  text-[#484f58]
-                  mt-1
-                "
-              >
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+              <span className="tabular-nums">
                 {loading && groups.length === 0
-                  ? "Loading..."
+                  ? "Loading"
                   : `${groups.length} group${
                       groups.length !== 1 ? "s" : ""
-                    } · ${totalCmds} ${
+                    }, ${totalCmds} ${
                       totalCmds !== 1 ? "code blocks" : "code block"
                     }`}
-              </p>
-            </div>
+              </span>
 
-            {!isLoggedIn && (
-              <div
-                className="
-                  flex items-center
-                  gap-2
-                  text-[11px]
-                  text-[#8b949e]
-                "
-              >
-                <LockIcon size={13} />
-                Login required to add, edit or delete.
-              </div>
-            )}
+              {refreshing && (
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <SpinnerIcon size={13} />
+                  Syncing
+                </span>
+              )}
+
+              {!isLoggedIn && (
+                <span className="inline-flex items-center gap-1.5 text-xs">
+                  <LockIcon size={13} />
+                  Log in to add, edit or delete groups.
+                </span>
+              )}
+            </p>
           </div>
+
+          {isLoggedIn && (
+            <button
+              type="button"
+              onClick={openAdd}
+              className="btn btn-primary self-start"
+            >
+              <PlusIcon />
+              New group
+            </button>
+          )}
         </div>
 
         {/* ERROR */}
         {apiError && (
           <div
-            className="
-              mb-5
-              flex items-start
-              gap-3
-              bg-red-500/10
-              border border-red-500/25
-              text-red-400
-              rounded-xl
-              px-4 py-3
-              text-sm
-            "
+            className="mb-5 flex items-start gap-3 rounded-card border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger"
             role="alert"
           >
-            <svg
-              className="shrink-0 mt-0.5"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
+            <Icon name="error-warning" size={18} className="mt-0.5" />
 
-            <div className="flex-1 min-w-0">
-              <p className="font-medium">Backend Connection Error</p>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Couldn’t load your commands</p>
 
-              <p className="text-red-400/70 text-xs mt-0.5">{apiError}</p>
+              <p className="mt-0.5 break-words text-[13px] text-danger/80">
+                {apiError}
+              </p>
 
               <button
                 type="button"
@@ -2182,123 +1717,97 @@ export default function CommandLibrary({ user, token }) {
                   })
                 }
                 disabled={refreshing}
-                className="
-                  mt-1.5
-                  inline-flex
-                  items-center
-                  gap-1.5
-                  text-xs
-                  underline
-                  hover:text-red-300
-                  disabled:opacity-50
-                "
+                className="btn btn-secondary mt-2.5 h-8 border-danger/25 text-danger hover:bg-surface"
               >
-                {refreshing && <SpinnerIcon size={11} />}
-                Retry
+                <Icon name="refresh" size={14} spin={refreshing} />
+                Try again
               </button>
             </div>
           </div>
         )}
 
         {/* SEARCH + FILTER */}
-        <div
-          className="
-            flex flex-col
-            lg:flex-row
-            gap-3
-            mb-6
-          "
-        >
-          <div className="relative flex-1">
-            <div
-              className="
-                absolute
-                left-3
-                top-1/2
-                -translate-y-1/2
-                text-[#484f58]
-              "
-            >
+        <div className="mb-5 space-y-3">
+          <div className="relative max-w-md">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint">
               <SearchIcon />
-            </div>
+            </span>
 
             <input
+              ref={searchRef}
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title, label or code..."
+              placeholder="Search title, label or code"
               aria-label="Search commands"
-              className="
-                w-full
-                bg-[#0d1117]
-                border border-[#21262d]
-                text-[#e6edf3]
-                text-sm
-                rounded-lg
-                pl-9 pr-3 py-2
-                placeholder-[#3d444d]
-                focus:outline-none
-                focus:border-[#58a6ff]
-                transition-colors
-              "
+              className="input pl-9 pr-10"
             />
+
+            {search ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  searchRef.current?.focus();
+                }}
+                className="icon-btn absolute right-1 top-1/2 size-7 -translate-y-1/2"
+                aria-label="Clear search"
+              >
+                <XIcon size={14} />
+              </button>
+            ) : (
+              <span
+                className="kbd pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex"
+                aria-hidden="true"
+              >
+                /
+              </span>
+            )}
           </div>
 
           <div
-            className="
-              flex gap-1.5
-              flex-wrap
-            "
+            className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+            role="group"
+            aria-label="Filter by category"
           >
-            {allTags.map((tag) => (
-              <button
-                type="button"
-                key={tag}
-                onClick={() => setFilterTag(tag)}
-                aria-pressed={filterTag === tag}
-                className={`
-                  px-3 py-1.5
-                  rounded-lg
-                  text-[11px]
-                  font-semibold
-                  transition-all
-                  capitalize
-                  ${
-                    filterTag === tag
-                      ? "bg-[#21262d] text-[#e6edf3] border border-[#58a6ff]"
-                      : "bg-[#0d1117] text-[#484f58] border border-[#21262d] hover:border-[#30363d] hover:text-[#8b949e]"
-                  }
-                `}
-              >
-                {tag}
-              </button>
-            ))}
+            {allTags.map((tag) => {
+              const active = filterTag === tag;
+
+              return (
+                <button
+                  type="button"
+                  key={tag}
+                  onClick={() => setFilterTag(tag)}
+                  aria-pressed={active}
+                  className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors duration-150 ${
+                    active
+                      ? "border-navy bg-navy text-on-navy"
+                      : "border-line bg-surface text-muted hover:border-line-strong hover:text-ink"
+                  }`}
+                >
+                  {tag !== "all" && (
+                    <span
+                      className="size-1.5 rounded-full"
+                      style={{ background: active ? "currentColor" : tagColor(tag) }}
+                      aria-hidden="true"
+                    />
+                  )}
+
+                  {tag === "all" ? "All" : tag}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* CONTENT */}
         {loading && groups.length === 0 ? (
-          <div
-            className="
-              flex flex-col
-              items-center
-              justify-center
-              py-20
-              gap-3
-            "
-            role="status"
-            aria-live="polite"
-          >
-            <SpinnerIcon size={22} />
+          <div className="space-y-3" role="status" aria-live="polite">
+            <span className="sr-only">Loading commands</span>
 
-            <p
-              className="
-                text-[#484f58]
-                text-sm
-              "
-            >
-              Loading commands...
-            </p>
+            <CardSkeleton />
+            <CardSkeleton />
+            <CardSkeleton />
           </div>
         ) : groups.length > 0 ? (
           <div className="space-y-3">
@@ -2343,29 +1852,29 @@ export default function CommandLibrary({ user, token }) {
         />
       )}
 
+      {/* DELETE CONFIRMATION */}
+      {pendingDelete && (
+        <ConfirmDialog
+          title={pendingDelete.title}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const { id } = pendingDelete;
+
+            setPendingDelete(null);
+            performDelete(id);
+          }}
+        />
+      )}
+
       {/* DELETE STATUS */}
       {deletingId && (
         <div
-          className="
-            fixed
-            bottom-4
-            right-4
-            z-50
-            flex items-center
-            gap-2
-            px-3 py-2
-            bg-[#161b22]
-            border border-[#30363d]
-            rounded-lg
-            text-xs
-            text-[#8b949e]
-            shadow-xl
-          "
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-control border border-line bg-surface px-3 py-2 text-[13px] text-muted shadow-pop animate-rise"
           role="status"
           aria-live="polite"
         >
           <SpinnerIcon size={14} />
-          Deleting...
+          Deleting
         </div>
       )}
     </div>

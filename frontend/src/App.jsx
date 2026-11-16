@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import axios from "axios";
+import { ToastContainer } from "react-toastify";
 
 import Login from "./Context/Login";
 import Signup from "./Context/Signup";
@@ -9,6 +10,7 @@ import ForgotPassword from "./Context/ForgotPassword";
 
 import CommandLibrary from "./components/CommandLibrary";
 import Layout from "./components/Layout";
+import Icon from "./components/ui/Icon";
 
 /* ============================================================
    API CONFIG
@@ -152,32 +154,49 @@ function ScrollToTop() {
 function LoadingScreen() {
   return (
     <div
-      className="
-        min-h-screen
-        bg-[#0A0810]
-        flex
-        items-center
-        justify-center
-      "
+      className="grid min-h-screen place-items-center bg-canvas"
       role="status"
       aria-live="polite"
     >
-      <div className="flex flex-col items-center">
-        <div
-          className="
-            w-10
-            h-10
-            rounded-full
-            border-2
-            border-white/10
-            border-t-[#8B72FF]
-            animate-spin
-          "
-        />
+      <div className="flex flex-col items-center gap-3">
+        <Icon name="loader-4" size={24} spin className="text-navy" />
 
-        <p className="mt-4 text-sm text-slate-500">Loading...</p>
+        <p className="text-sm text-muted">Loading</p>
       </div>
     </div>
+  );
+}
+
+/* ============================================================
+   TOASTS
+   Remix icons so notifications match the rest of the UI.
+============================================================ */
+
+const TOAST_ICONS = {
+  success: { name: "checkbox-circle", tone: "text-success" },
+  error: { name: "error-warning", tone: "text-danger" },
+  warning: { name: "alert", tone: "text-warning" },
+  info: { name: "information", tone: "text-accent" },
+};
+
+function ToastIcon({ type }) {
+  const icon = TOAST_ICONS[type] || TOAST_ICONS.info;
+
+  return (
+    <Icon name={icon.name} variant="fill" size={18} className={icon.tone} />
+  );
+}
+
+function ToastClose({ closeToast }) {
+  return (
+    <button
+      type="button"
+      onClick={closeToast}
+      aria-label="Dismiss notification"
+      className="icon-btn size-6 self-start"
+    >
+      <Icon name="close" size={14} />
+    </button>
   );
 }
 
@@ -478,6 +497,17 @@ export default function App() {
   return (
     <>
       <ScrollToTop />
+
+      <ToastContainer
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar
+        newestOnTop
+        pauseOnFocusLoss={false}
+        theme="light"
+        icon={ToastIcon}
+        closeButton={ToastClose}
+      />
 
       <Routes>
         {/* ==================================================
