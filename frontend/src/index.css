@@ -6,82 +6,106 @@
    <html data-theme="light|dark">. Tailwind utilities read them
    through the inline @theme block below.
 ============================================================ */
+/* Luxury Editorial palette. Values follow the brief; a few text tones are
+   nudged darker/lighter where the brief's value failed 4.5:1 on its surface. */
 :root {
   color-scheme: light;
 
-  --c-canvas: #f7f5f0;
+  --c-canvas: #f7f6f2;
+  --c-sunken: #efeee8;
   --c-surface: #ffffff;
-  --c-sunken: #f0ede5;
-  --c-line: #e4dfd3;
-  --c-line-strong: #cfc9ba;
+  --c-elevated: #fcfbf8;
+  --c-line: #e6e3db;
+  --c-line-strong: #d2cec2;
 
-  --c-ink: #1a1d26;
-  --c-muted: #5b6170;
-  --c-faint: #8b909c;
+  --c-ink: #222720;
+  --c-muted: #6a6d65;
+  --c-faint: #8a8b83;
 
-  --c-navy: #16233f;
-  --c-navy-hover: #213459;
+  --c-navy: #315c50;
+  --c-navy-hover: #284c42;
   --c-on-navy: #ffffff;
-  --c-panel: #16233f;
-  --c-accent: #2b5bd7;
-  --c-accent-soft: #e9effc;
+  --c-panel: #1f3a31;
+  --c-accent: #315c50;
+  --c-accent-soft: #e4ede8;
+  --c-brass: #a68a5b;
+  --c-brass-soft: #f1eadb;
 
-  --c-success: #1e7a4f;
-  --c-success-soft: #e6f3ec;
-  --c-danger: #b3261e;
-  --c-danger-soft: #fbeae8;
-  --c-warning: var(--c-warning);
+  --c-success: #38775a;
+  --c-success-soft: #e5f0ea;
+  --c-danger: #b64b46;
+  --c-danger-soft: #f9e9e7;
+  --c-warning: #a5702a;
+  --c-info: #4a7088;
 
-  --c-code: #f4f1ea;
-  --c-code-raised: #eae5d9;
-  --c-code-line: #ddd7c8;
-  --c-code-text: #232733;
-  --c-code-muted: #6b7080;
-  --c-code-prompt: #1e7a4f;
-  --c-code-strong: #111827;
+  --c-code: #f1efe8;
+  --c-code-raised: #e8e5db;
+  --c-code-line: #ddd9cc;
+  --c-code-text: #2b3029;
+  --c-code-muted: #6a6d65;
+  --c-code-prompt: #315c50;
+  --c-code-strong: #14170f;
 
-  --c-scrim: rgb(22 35 63 / 0.45);
+  --c-tok-keyword: #8a6a2f;
+  --c-tok-string: #38775a;
+  --c-tok-comment: #84867e;
+  --c-tok-number: #4a7088;
+  --c-tok-fn: #315c50;
+  --c-tok-prop: #4a7088;
 
-  --sh-xs: 0 1px 2px rgb(22 35 63 / 0.05);
-  --sh-card: 0 1px 2px rgb(22 35 63 / 0.04), 0 6px 16px -8px rgb(22 35 63 / 0.1);
-  --sh-pop: 0 16px 40px -12px rgb(22 35 63 / 0.28), 0 2px 8px rgb(22 35 63 / 0.08);
+  --c-scrim: rgb(34 39 32 / 0.45);
+
+  --sh-xs: 0 1px 2px rgb(34 39 32 / 0.05);
+  --sh-card: 0 1px 2px rgb(34 39 32 / 0.04), 0 6px 16px -8px rgb(34 39 32 / 0.1);
+  --sh-pop: 0 16px 40px -12px rgb(34 39 32 / 0.28), 0 2px 8px rgb(34 39 32 / 0.08);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --c-canvas: #0e1117;
-  --c-surface: #151a23;
-  --c-sunken: #0a0d13;
-  --c-line: #252c39;
-  --c-line-strong: #343d4f;
+  --c-canvas: #171a18;
+  --c-sunken: #1d221f;
+  --c-surface: #242a26;
+  --c-elevated: #2a312c;
+  --c-line: #373e38;
+  --c-line-strong: #4a534b;
 
-  --c-ink: #e8eaf0;
-  --c-muted: #9aa2b3;
-  --c-faint: #6d7588;
+  --c-ink: #f1f0e9;
+  --c-muted: #b0b5ad;
+  --c-faint: #858d84;
 
-  --c-navy: #e6e9f2;
-  --c-navy-hover: #ffffff;
-  --c-on-navy: #0e1117;
-  --c-panel: #111827;
-  --c-accent: #7b9bff;
-  --c-accent-soft: #1a2342;
+  --c-navy: #8eaf9a;
+  --c-navy-hover: #a5c2b0;
+  --c-on-navy: #171a18;
+  --c-panel: #1d221f;
+  --c-accent: #8eaf9a;
+  --c-accent-soft: #223229;
+  --c-brass: #c4a978;
+  --c-brass-soft: #33301f;
 
-  --c-success: #4cc38a;
-  --c-success-soft: #12261d;
-  --c-danger: #f2706a;
-  --c-danger-soft: #2e1514;
-  --c-warning: #e3b341;
+  --c-success: #82b69a;
+  --c-success-soft: #1d2e25;
+  --c-danger: #d88b83;
+  --c-danger-soft: #382321;
+  --c-warning: #d4ad72;
+  --c-info: #88afc6;
 
-  --c-code: #0a0f1a;
-  --c-code-raised: #121b2f;
-  --c-code-line: #1f2a44;
-  --c-code-text: #dce4f5;
-  --c-code-muted: #8c9bba;
-  --c-code-prompt: #7fd3a9;
+  --c-code: #121513;
+  --c-code-raised: #1a1f1b;
+  --c-code-line: #2e352f;
+  --c-code-text: #e3e6de;
+  --c-code-muted: #9aa29a;
+  --c-code-prompt: #8eaf9a;
   --c-code-strong: #ffffff;
 
-  --c-scrim: rgb(0 0 0 / 0.62);
+  --c-tok-keyword: #c4a978;
+  --c-tok-string: #82b69a;
+  --c-tok-comment: #7c847b;
+  --c-tok-number: #88afc6;
+  --c-tok-fn: #8eaf9a;
+  --c-tok-prop: #88afc6;
+
+  --c-scrim: rgb(0 0 0 / 0.6);
 
   --sh-xs: 0 1px 2px rgb(0 0 0 / 0.3);
   --sh-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -8px rgb(0 0 0 / 0.5);
@@ -90,8 +114,9 @@
 
 @theme inline {
   --color-canvas: var(--c-canvas);
-  --color-surface: var(--c-surface);
   --color-sunken: var(--c-sunken);
+  --color-surface: var(--c-surface);
+  --color-elevated: var(--c-elevated);
   --color-line: var(--c-line);
   --color-line-strong: var(--c-line-strong);
   --color-ink: var(--c-ink);
@@ -103,11 +128,14 @@
   --color-panel: var(--c-panel);
   --color-accent: var(--c-accent);
   --color-accent-soft: var(--c-accent-soft);
+  --color-brass: var(--c-brass);
+  --color-brass-soft: var(--c-brass-soft);
   --color-success: var(--c-success);
   --color-success-soft: var(--c-success-soft);
   --color-danger: var(--c-danger);
   --color-danger-soft: var(--c-danger-soft);
   --color-warning: var(--c-warning);
+  --color-info: var(--c-info);
   --color-code: var(--c-code);
   --color-code-raised: var(--c-code-raised);
   --color-code-line: var(--c-code-line);
@@ -115,6 +143,12 @@
   --color-code-muted: var(--c-code-muted);
   --color-code-prompt: var(--c-code-prompt);
   --color-code-strong: var(--c-code-strong);
+  --color-tok-keyword: var(--c-tok-keyword);
+  --color-tok-string: var(--c-tok-string);
+  --color-tok-comment: var(--c-tok-comment);
+  --color-tok-number: var(--c-tok-number);
+  --color-tok-fn: var(--c-tok-fn);
+  --color-tok-prop: var(--c-tok-prop);
   --color-scrim: var(--c-scrim);
 
   --shadow-xs: var(--sh-xs);
@@ -123,8 +157,8 @@
 }
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
@@ -164,7 +198,7 @@
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
-    font-feature-settings: "cv11", "ss03";
+    font-feature-settings: "calt", "ss01";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -235,7 +269,7 @@
     @apply text-muted hover:bg-sunken hover:text-ink;
   }
   .btn-danger {
-    @apply border-transparent bg-[#b3261e] text-white hover:bg-[#9a1f18];
+    @apply border-transparent bg-[#b64b46] text-white hover:bg-[#9e3e39];
   }
 
   .icon-btn {
@@ -276,7 +310,7 @@
   --toastify-text-color-light: var(--c-ink);
   --toastify-color-success: var(--c-success);
   --toastify-color-error: var(--c-danger);
-  --toastify-color-info: var(--c-accent);
+  --toastify-color-info: var(--c-info);
   --toastify-color-warning: var(--c-warning);
 }
 .Toastify__toast {

@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import Icon from "./ui/Icon";
 import useDialogBehavior from "./ui/useDialogBehavior";
 import Brand from "./ui/Brand";
+import CodeText from "./ui/CodeText";
+import Menu from "./ui/Menu";
 import ThemeToggle from "./ui/ThemeToggle";
+import { copyText } from "../lib/clipboard";
+import { OPEN_PALETTE_EVENT } from "../lib/events";
+import { exportJson, exportMarkdown } from "../lib/exportLibrary";
+import { isEditableTarget } from "../lib/platform";
+import usePins from "../lib/pins";
+import { hasVariables } from "../lib/variables";
+
+const CommandPalette = lazy(() => import("./CommandPalette"));
+const ShortcutsDialog = lazy(() => import("./ShortcutsDialog"));
+const VariableDialog = lazy(() => import("./VariableDialog"));
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE ||
@@ -301,7 +313,7 @@ const api = {
 };
 
 
-function CopyButton({ text, large = false }) {
+function CopyButton({ text, large = false, onCopy }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef(null);
 
@@ -314,51 +326,21 @@ function CopyButton({ text, large = false }) {
   }, []);
 
   const handleCopy = async () => {
-    const value = text || "";
+    const copiedOk = await onCopy(text || "");
 
-    if (!value) {
-      toast.info("Nothing to copy.");
+    if (!copiedOk) {
       return;
     }
 
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textarea = document.createElement("textarea");
+    setCopied(true);
 
-        textarea.value = value;
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        textarea.style.top = "0";
-
-        document.body.appendChild(textarea);
-
-        textarea.focus();
-        textarea.select();
-
-        const successful = document.execCommand("copy");
-
-        textarea.remove();
-
-        if (!successful) {
-          throw new Error("Copy failed");
-        }
-      }
-
-      setCopied(true);
-      toast.success("Copied to clipboard");
-
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-      }
-
-      timerRef.current = window.setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch {
-      toast.error("Unable to copy code.");
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
     }
+
+    timerRef.current = window.setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   };
 
   return (
@@ -380,7 +362,15 @@ function CopyButton({ text, large = false }) {
   );
 }
 
-function CommandCard({ item, onDelete, onEdit, deleting }) {
+function CommandCard({
+  item,
+  onDelete,
+  onEdit,
+  deleting,
+  pinned = false,
+  onTogglePin,
+  onCopy,
+}) {
   const tag = item?.tag || "other";
   const commands = Array.isArray(item?.commands) ? item.commands : [];
   const groupId = item?._id || item?.id || item?.clientId || "unknown";
@@ -396,7 +386,7 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
     <article className="group rounded-card border border-line bg-surface shadow-card">
       <header className="flex items-start justify-between gap-3 px-4 pb-3 pt-3.5 sm:px-5">
         <div className="min-w-0">
-          <h3 className="truncate text-[15px] font-semibold tracking-tight text-ink">
+          <h3 className="truncate text-base font-semibold tracking-tight text-ink">
             {item?.title || "Untitled"}
           </h3>
 
@@ -414,13 +404,51 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
               <span className="chip bg-transparent text-muted">{typeLabel}</span>
             )}
 
-            <span className="text-xs text-muted">
+            <span className="text-xs tabular-nums text-muted">
               {commands.length} {commands.length === 1 ? "block" : "blocks"}
             </span>
+
+            {pinned && (
+              <Icon
+                name="pushpin-2"
+                variant="fill"
+                size={14}
+                className="text-brass"
+                label="Pinned"
+              />
+            )}
           </div>
         </div>
 
         <div className="card-actions -mr-1.5 flex shrink-0 items-center gap-0.5">
+          {commands.length > 1 && (
+            <button
+              type="button"
+              onClick={() => onCopy(commands.map((command) => command?.cmd || "").join("\n"))}
+              className="icon-btn"
+              title="Copy all blocks"
+              aria-label={`Copy all blocks of ${item?.title || "command group"}`}
+            >
+              <Icon name="clipboard" size={16} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onTogglePin(groupId)}
+            className="icon-btn"
+            aria-pressed={pinned}
+            title={pinned ? "Unpin" : "Pin to top"}
+            aria-label={`${pinned ? "Unpin" : "Pin"} ${item?.title || "command group"}`}
+          >
+            <Icon
+              name="pushpin-2"
+              variant={pinned ? "fill" : "line"}
+              size={16}
+              className={pinned ? "text-brass" : ""}
+            />
+          </button>
+
           <button
             type="button"
             onClick={() => onEdit(item)}
@@ -472,13 +500,15 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
                       {command?.label || item?.language || "code"}
                     </span>
 
-                    <CopyButton text={value} />
+                    <CopyButton text={value} onCopy={onCopy} />
                   </div>
                 )}
 
                 {isMultiLine ? (
                   <pre className="max-h-[480px] overflow-auto whitespace-pre p-4 font-mono text-[12.5px] leading-6 text-code-text">
-                    <code>{value}</code>
+                    <code>
+                      <CodeText code={value} language={item?.language} />
+                    </code>
                   </pre>
                 ) : (
                   <div className="flex items-center gap-2 py-1.5 pl-3 pr-1.5">
@@ -490,10 +520,10 @@ function CommandCard({ item, onDelete, onEdit, deleting }) {
                     </span>
 
                     <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap py-1 font-mono text-[12.5px] text-code-text">
-                      {value}
+                      <CodeText code={value} language={item?.language} />
                     </code>
 
-                    {!showHeader && <CopyButton text={value} />}
+                    {!showHeader && <CopyButton text={value} onCopy={onCopy} />}
                   </div>
                 )}
               </div>
@@ -1172,36 +1202,63 @@ export default function CommandLibrary({ user, token }) {
 
   const searchRef = useRef(null);
 
-  /* Press "/" to jump to search, unless typing or a dialog is open. */
-  useEffect(() => {
-    const handleShortcut = (event) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
+  const { pinned, toggle: togglePin } = usePins(getCacheKey(user));
 
-      const target = event.target;
-      const tagName = target?.tagName;
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [variableRequest, setVariableRequest] = useState(null);
 
-      if (
-        tagName === "INPUT" ||
-        tagName === "TEXTAREA" ||
-        tagName === "SELECT" ||
-        target?.isContentEditable ||
-        document.querySelector('[aria-modal="true"]')
-      ) {
-        return;
-      }
+  /* Every copy goes through here so {{placeholders}} are always handled. */
+  const requestCopy = useCallback(async (text) => {
+    const value = text || "";
 
-      event.preventDefault();
-      searchRef.current?.focus();
-    };
+    if (!value) {
+      toast.info("Nothing to copy.");
+      return false;
+    }
 
-    window.addEventListener("keydown", handleShortcut);
+    if (hasVariables(value)) {
+      return new Promise((resolve) => {
+        setVariableRequest((previous) => {
+          previous?.resolve(false);
 
-    return () => {
-      window.removeEventListener("keydown", handleShortcut);
-    };
+          return { text: value, resolve };
+        });
+      });
+    }
+
+    const ok = await copyText(value);
+
+    if (ok) {
+      toast.success("Copied to clipboard");
+    } else {
+      toast.error("Unable to copy code.");
+    }
+
+    return ok;
   }, []);
+
+  const handleVariablesSubmit = async (finalText) => {
+    const request = variableRequest;
+
+    setVariableRequest(null);
+
+    const ok = await copyText(finalText);
+
+    if (ok) {
+      toast.success("Copied to clipboard");
+    } else {
+      toast.error("Unable to copy code.");
+    }
+
+    request?.resolve(ok);
+  };
+
+  const handleVariablesCancel = () => {
+    variableRequest?.resolve(false);
+    setVariableRequest(null);
+  };
+
   const mountedRef = useRef(false);
   const fetchAbortRef = useRef(null);
   const requestIdRef = useRef(0);
@@ -1608,6 +1665,78 @@ export default function CommandLibrary({ user, token }) {
   // RENDER
   // ───────────────────────────────────────────────────────────────────────────
 
+  /* Pinned groups first, otherwise the server order. */
+  const visibleGroups = useMemo(() => {
+    if (pinned.length === 0) {
+      return groups;
+    }
+
+    const isPinned = (group) =>
+      pinned.includes(group?._id || group?.id || group?.clientId);
+
+    return [...groups.filter(isPinned), ...groups.filter((group) => !isPinned(group))];
+  }, [groups, pinned]);
+
+  /* Warm the lazy chunks shortly after load so first open feels instant. */
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      import("./CommandPalette");
+      import("./VariableDialog");
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const openAddRef = useRef(openAdd);
+
+  useEffect(() => {
+    openAddRef.current = openAdd;
+  });
+
+  /* Keyboard: mod+K palette, "/" search, "n" new group, "?" shortcuts. */
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      const key = event.key.toLowerCase();
+      const modifier = event.metaKey || event.ctrlKey;
+      const openDialog = document.querySelector('[aria-modal="true"]');
+
+      if (modifier && key === "k") {
+        if (openDialog && openDialog.getAttribute("aria-label") !== "Command palette") {
+          return;
+        }
+
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+
+      if (modifier || event.altKey || openDialog || isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (key === "/") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      } else if (key === "?") {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      } else if (key === "n" && isLoggedIn) {
+        event.preventDefault();
+        openAddRef.current();
+      }
+    };
+
+    const handleOpenPalette = () => setPaletteOpen(true);
+
+    window.addEventListener("keydown", handleShortcut);
+    window.addEventListener(OPEN_PALETTE_EVENT, handleOpenPalette);
+
+    return () => {
+      window.removeEventListener("keydown", handleShortcut);
+      window.removeEventListener(OPEN_PALETTE_EVENT, handleOpenPalette);
+    };
+  }, [isLoggedIn]);
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       {/* Guest header. Signed-in users get the sidebar from Layout instead. */}
@@ -1616,7 +1745,7 @@ export default function CommandLibrary({ user, token }) {
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
             <Brand />
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <ThemeToggle variant="cycle" />
 
               <button
@@ -1647,7 +1776,7 @@ export default function CommandLibrary({ user, token }) {
         {/* TITLE */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-[28px] font-semibold leading-9 tracking-[-0.02em]">
               Command library
             </h1>
 
@@ -1682,16 +1811,43 @@ export default function CommandLibrary({ user, token }) {
             </p>
           </div>
 
-          {isLoggedIn && (
-            <button
-              type="button"
-              onClick={openAdd}
-              className="btn btn-primary self-start"
-            >
-              <PlusIcon />
-              New group
-            </button>
-          )}
+          <div className="flex items-center gap-2 self-start">
+            {groups.length > 0 && (
+              <Menu
+                width="w-52"
+                trigger={({ ref, props }) => (
+                  <button ref={ref} {...props} className="btn btn-secondary">
+                    <Icon name="download-2" size={16} />
+                    Export
+                    <Icon name="arrow-down-s" size={16} className="-mr-1 text-muted" />
+                  </button>
+                )}
+                items={[
+                  {
+                    label: "Export as JSON",
+                    icon: "braces",
+                    onSelect: () => exportJson(groups),
+                  },
+                  {
+                    label: "Export as Markdown",
+                    icon: "markdown",
+                    onSelect: () => exportMarkdown(groups),
+                  },
+                ]}
+              />
+            )}
+
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={openAdd}
+                className="btn btn-primary"
+              >
+                <PlusIcon />
+                New group
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ERROR */}
@@ -1811,7 +1967,7 @@ export default function CommandLibrary({ user, token }) {
           </div>
         ) : groups.length > 0 ? (
           <div className="space-y-3">
-            {groups.map((item, index) => {
+            {visibleGroups.map((item, index) => {
               const itemKey =
                 item?._id || item?.id || item?.clientId || `group-${index}`;
 
@@ -1824,6 +1980,9 @@ export default function CommandLibrary({ user, token }) {
                   onDelete={handleDelete}
                   onEdit={openEdit}
                   deleting={deletingId === itemId}
+                  pinned={pinned.includes(itemKey)}
+                  onTogglePin={togglePin}
+                  onCopy={requestCopy}
                 />
               );
             })}
@@ -1865,6 +2024,35 @@ export default function CommandLibrary({ user, token }) {
           }}
         />
       )}
+
+      {/* PALETTE, SHORTCUTS, PLACEHOLDERS */}
+      <Suspense fallback={null}>
+        {paletteOpen && (
+          <CommandPalette
+            groups={groups}
+            isLoggedIn={isLoggedIn}
+            onClose={() => setPaletteOpen(false)}
+            onCopy={requestCopy}
+            onNewGroup={openAdd}
+            onShowShortcuts={() => setShortcutsOpen(true)}
+          />
+        )}
+
+        {shortcutsOpen && (
+          <ShortcutsDialog
+            isLoggedIn={isLoggedIn}
+            onClose={() => setShortcutsOpen(false)}
+          />
+        )}
+
+        {variableRequest && (
+          <VariableDialog
+            text={variableRequest.text}
+            onSubmit={handleVariablesSubmit}
+            onCancel={handleVariablesCancel}
+          />
+        )}
+      </Suspense>
 
       {/* DELETE STATUS */}
       {deletingId && (

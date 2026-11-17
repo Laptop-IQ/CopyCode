@@ -1,8 +1,27 @@
-import { useState } from "react";
-import Sidebar from "./Sidebar";
+import { useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 
-export default function Layout({ user, token, onLogout, children }) {
-  const [collapsed, setCollapsed] = useState(false);
+import Header from "./Header";
+import { clearAuth } from "../lib/auth";
+
+export default function Layout({ user, onLogout, children }) {
+  const navigate = useNavigate();
+
+  /* Parent clears storage and state; we then return home. */
+  const handleLogout = useCallback(async () => {
+    try {
+      if (typeof onLogout === "function") {
+        await onLogout();
+      } else {
+        clearAuth();
+      }
+    } catch (error) {
+      console.error("[Auth] Logout failed:", error);
+      clearAuth();
+    } finally {
+      navigate("/", { replace: true });
+    }
+  }, [navigate, onLogout]);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -13,21 +32,10 @@ export default function Layout({ user, token, onLogout, children }) {
         Skip to content
       </a>
 
-      <Sidebar
-        collapsed={collapsed}
-        setCollapsed={setCollapsed}
-        user={user}
-        onLogout={onLogout}
-      />
+      <Header user={user} onLogout={handleLogout} />
 
       {/* The page inside renders its own <main id="main"> landmark. */}
-      <div
-        className={`min-h-screen pt-14 transition-[margin] duration-300 ease-[cubic-bezier(.22,1,.36,1)] md:pt-0 ${
-          collapsed ? "md:ml-[68px]" : "md:ml-[240px]"
-        }`}
-      >
-        {children}
-      </div>
+      {children}
     </div>
   );
 }

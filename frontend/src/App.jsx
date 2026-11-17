@@ -176,7 +176,7 @@ const TOAST_ICONS = {
   success: { name: "checkbox-circle", tone: "text-success" },
   error: { name: "error-warning", tone: "text-danger" },
   warning: { name: "alert", tone: "text-warning" },
-  info: { name: "information", tone: "text-accent" },
+  info: { name: "information", tone: "text-info" },
 };
 
 function ToastIcon({ type }) {

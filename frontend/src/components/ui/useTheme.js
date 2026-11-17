@@ -6,7 +6,7 @@ const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 export const THEME_MODES = ["system", "light", "dark"];
 
-const THEME_COLORS = { light: "#f7f5f0", dark: "#0e1117" };
+const THEME_COLORS = { light: "#f7f6f2", dark: "#171a18" };
 
 function readMode() {
   try {

@@ -11,7 +11,7 @@ export default function Brand({ compact = false, tone = "default" }) {
     <div className="flex min-w-0 items-center gap-2.5">
       <span
         className={`grid size-8 shrink-0 place-items-center rounded-lg ${
-          inverse ? "bg-white text-[#16233f]" : "bg-navy text-on-navy"
+          inverse ? "bg-white text-[#1f3a31]" : "bg-navy text-on-navy"
         }`}
       >
         <Icon name="code-s-slash" size={17} />

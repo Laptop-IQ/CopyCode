@@ -17,7 +17,7 @@ function AuthAside() {
       </Link>
 
       <div>
-        <h2 className="max-w-md text-[28px] font-semibold leading-tight tracking-tight">
+        <h2 className="max-w-md text-[36px] font-semibold leading-[1.1] tracking-[-0.02em]">
           Stop digging through your shell history.
         </h2>
 
@@ -27,10 +27,10 @@ function AuthAside() {
         </p>
 
         <div
-          className="mt-8 max-w-md overflow-hidden rounded-card border border-[#243455] bg-[#0f1a30]"
+          className="mt-8 max-w-md overflow-hidden rounded-card border border-[#2b3f37] bg-[#14201b]"
           aria-hidden="true"
         >
-          <div className="flex items-center justify-between border-b border-[#243455] bg-[#16233f]/60 px-3.5 py-2 text-xs text-[#8c9bba]">
+          <div className="flex items-center justify-between border-b border-[#2b3f37] bg-[#1e3029]/60 px-3.5 py-2 text-xs text-[#9db3a6]">
             <span className="font-mono">Undo the last commit</span>
 
             <span className="inline-flex items-center gap-1.5">
@@ -39,11 +39,11 @@ function AuthAside() {
             </span>
           </div>
 
-          <pre className="overflow-hidden p-4 font-mono text-[13px] leading-6 text-[#dce4f5]">
-            <span className="select-none text-[#7fd3a9]">$ </span>
+          <pre className="overflow-hidden p-4 font-mono text-[13px] leading-6 text-[#dde7e0]">
+            <span className="select-none text-[#8eaf9a]">$ </span>
             git reset --soft HEAD~1
             {"\n"}
-            <span className="select-none text-[#7fd3a9]">$ </span>
+            <span className="select-none text-[#8eaf9a]">$ </span>
             git restore --staged .
           </pre>
         </div>

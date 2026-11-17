@@ -4,15 +4,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import Brand from "./ui/Brand";
 import Icon from "./ui/Icon";
 import ThemeToggle from "./ui/ThemeToggle";
-
-/* ============================================================
-   CONSTANTS
-============================================================ */
-
-const STORAGE_KEYS = {
-  USER: "user",
-  TOKEN: "token",
-};
+import { clearAuth } from "../lib/auth";
 
 const navItems = [
   {
@@ -22,26 +14,6 @@ const navItems = [
     end: true,
   },
 ];
-
-/* ============================================================
-   CLEAR AUTH
-============================================================ */
-
-function clearAuth() {
-  try {
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-  } catch (error) {
-    console.error("[Auth] localStorage cleanup failed:", error);
-  }
-
-  try {
-    sessionStorage.removeItem(STORAGE_KEYS.USER);
-    sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
-  } catch (error) {
-    console.error("[Auth] sessionStorage cleanup failed:", error);
-  }
-}
 
 /* ============================================================
    SIDEBAR
@@ -125,16 +97,18 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
       <header className="fixed inset-x-0 top-0 z-[60] flex h-14 items-center justify-between border-b border-line bg-canvas/90 px-4 backdrop-blur md:hidden">
         <Brand />
 
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="icon-btn -mr-2 size-10"
-          aria-label="Open navigation menu"
-          aria-expanded={mobileOpen}
-          aria-controls="app-sidebar"
-        >
-          <Icon name="menu" size={20} />
-        </button>
+        <div className="-mr-2 flex items-center">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="icon-btn size-10"
+            aria-label="Open navigation menu"
+            aria-expanded={mobileOpen}
+            aria-controls="app-sidebar"
+          >
+            <Icon name="menu" size={22} />
+          </button>
+        </div>
       </header>
 
       {/* Mobile overlay */}
@@ -150,7 +124,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
       <aside
         id="app-sidebar"
         aria-label="Main navigation"
-        className={`fixed inset-y-0 left-0 z-[60] flex w-[272px] flex-col border-r border-line bg-sunken transition-[transform,width,visibility] duration-300 ease-[cubic-bezier(.22,1,.36,1)] md:visible md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-[60] flex w-[272px] flex-col border-r border-line bg-sunken transition-[transform,width,visibility] duration-[220ms] ease-[cubic-bezier(.22,1,.36,1)] md:visible md:translate-x-0 ${
           collapsed ? "md:w-[68px]" : "md:w-[240px]"
         } ${
           mobileOpen
@@ -187,7 +161,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
                   onClick={() => setMobileOpen(false)}
                   title={collapsed ? item.label : undefined}
                   className={({ isActive }) =>
-                    `flex h-9 items-center gap-2.5 rounded-control px-2.5 text-[13px] font-medium transition-colors duration-150 ${
+                    `relative flex h-9 items-center gap-2.5 rounded-control px-2.5 text-[13px] font-medium transition-colors duration-150 ${
                       collapsed ? "md:justify-center md:px-0" : ""
                     } ${
                       isActive
@@ -198,6 +172,13 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
                 >
                   {({ isActive }) => (
                     <>
+                      {isActive && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-brass"
+                        />
+                      )}
+
                       <Icon
                         name={item.icon}
                         variant={isActive ? "fill" : "line"}
@@ -215,18 +196,9 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
           </ul>
         </nav>
 
-        {/* Theme */}
-        <div className="px-2.5 pb-1.5">
-          <ThemeToggle
-            className={collapsed ? "md:hidden" : ""}
-          />
-
-          {collapsed && (
-            <ThemeToggle
-              variant="cycle"
-              className="mx-auto hidden md:inline-flex"
-            />
-          )}
+        {/* Theme (desktop uses the header menu) */}
+        <div className="px-2.5 pb-1.5 md:hidden">
+          <ThemeToggle />
         </div>
 
         {/* Collapse toggle (desktop only) */}
@@ -251,13 +223,9 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
           </button>
         </div>
 
-        {/* Account */}
-        <div className="shrink-0 border-t border-line p-2.5">
-          <div
-            className={`flex items-center gap-2.5 p-1.5 ${
-              collapsed ? "md:justify-center md:p-0" : ""
-            }`}
-          >
+        {/* Account (desktop uses the header menu) */}
+        <div className="shrink-0 border-t border-line p-2.5 md:hidden">
+          <div className="flex items-center gap-2.5 p-1.5">
             <span
               className="grid size-8 shrink-0 place-items-center rounded-lg bg-navy/10 text-[13px] font-semibold text-navy"
               aria-hidden="true"
@@ -265,7 +233,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
               {userInitial}
             </span>
 
-            <div className={`min-w-0 flex-1 ${collapsed ? "md:hidden" : ""}`}>
+            <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium leading-tight text-ink">
                 {userName}
               </p>
@@ -279,7 +247,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
               type="button"
               onClick={handleLogout}
               disabled={isLoggingOut}
-              className={`icon-btn ${collapsed ? "md:hidden" : ""}`}
+              className="icon-btn"
               aria-label="Log out"
               title="Log out"
             >
@@ -290,23 +258,6 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
               />
             </button>
           </div>
-
-          {collapsed && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="icon-btn mx-auto mt-1.5 hidden md:inline-flex"
-              aria-label="Log out"
-              title="Log out"
-            >
-              <Icon
-                name={isLoggingOut ? "loader-4" : "logout-box-r"}
-                spin={isLoggingOut}
-                size={18}
-              />
-            </button>
-          )}
         </div>
       </aside>
     </>
